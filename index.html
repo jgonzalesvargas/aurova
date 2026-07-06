@@ -29,6 +29,8 @@
   h1,h2,h3{margin:0;font-weight:400;color:var(--cream);}
   button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;}
   input,select{font-family:inherit;font-size:15px;}
+  /* En celular, campos a 16px para que iOS NO haga zoom automático al tocarlos */
+  @media(max-width:560px){ input,select,textarea{font-size:16px !important;} }
   .num{font-variant-numeric:tabular-nums;}
 
   /* ---- App bar ---- */
