@@ -345,7 +345,7 @@ const TR_EN = {
   "Descuento de":"Discount of","% aplicado ✓":"% applied ✓","Descuento":"Discount",
   "Nuevo código":"New code","Tipo":"Type","Crear código":"Create code","Código creado ✓":"Code created ✓","Cargando…":"Loading…","Sin códigos aún.":"No codes yet.",
   "Meses gratis (vacío=siempre)":"Free months (empty=forever)","% de descuento":"% discount","VIP (gratis)":"VIP (free)","Descuento %":"Discount %",
-  "Códigos":"Codes","No se pudo crear":"Couldn't create","¿Eliminar este código?":"Delete this code?",
+  "Códigos":"Codes","No se pudo crear":"Couldn't create","¿Eliminar este código?":"Delete this code?","Ingresa tu código":"Enter your code",
   // Muro premium + reportes
   "Función Premium":"Premium feature","Esta función":"This feature","— disponible en Aurova Premium.":"— available in Aurova Premium.",
   "Ver Premium":"See Premium","Ahora no":"Not now","Los reportes en PDF":"PDF reports","Tener más de 3 metas":"Having more than 3 goals","Permite ventanas emergentes":"Allow pop-up windows",
@@ -1500,7 +1500,7 @@ function openPlanes(){
     <div class="card" style="border-color:var(--champagne);"><div style="font-weight:700;color:var(--champagne);margin-bottom:4px;">Premium ✦</div><div class="muted" style="font-size:13px;">Todo lo de Free, más reportes en PDF, modo parejas, asistente IA, categorías ilimitadas y soporte prioritario. <i>(próximamente)</i></div></div>
     ${pro?"":`<button class="btn block" style="margin-top:12px;" onclick="toast('El cobro llega pronto — por ahora usa un código')">Hazte Premium</button>`}
     <div class="field" style="margin-top:16px;"><label>¿Tienes un código?</label>
-      <div style="display:flex;gap:8px;"><input id="plCode" type="text" placeholder="Ej. FAMILIA2026" style="flex:1;text-transform:uppercase;"><button class="btn sm" onclick="canjear()">Canjear</button></div></div>
+      <div style="display:flex;gap:8px;"><input id="plCode" type="text" placeholder="Ingresa tu código" style="flex:1;text-transform:uppercase;"><button class="btn sm" onclick="canjear()">Canjear</button></div></div>
     <div id="plMsg"></div>
     <div class="card" style="margin-top:16px;">
       <div class="eyebrow">Invita y gana</div>
@@ -1531,7 +1531,7 @@ function compartirRef(){
 function openAdmin(){
   modal(`
     <div style="text-align:center;"><div class="eyebrow">Admin</div><h3 style="font-family:var(--serif);font-size:22px;color:var(--cream);">Códigos</h3></div>
-    <div class="field"><label>Nuevo código</label><input id="apCode" type="text" placeholder="FAMILIA2026" style="text-transform:uppercase;"></div>
+    <div class="field"><label>Nuevo código</label><input id="apCode" type="text" placeholder="NUEVOCODIGO" style="text-transform:uppercase;"></div>
     <div class="field row2">
       <div><label>Tipo</label><select id="apKind" onchange="document.getElementById('apValLbl').textContent=this.value==='vip'?'Meses gratis (vacío=siempre)':'% de descuento'"><option value="vip">VIP (gratis)</option><option value="discount">Descuento %</option></select></div>
       <div><label id="apValLbl">Meses gratis (vacío=siempre)</label><input id="apVal" type="number" placeholder=""></div></div>
