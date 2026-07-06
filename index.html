@@ -245,6 +245,8 @@ const TR_EN = {
   "Gastos por categoría":"Spending by category","Bienvenido":"Welcome",
   "Tu app de finanzas, vacía y lista":"Your finance app, empty and ready","Agregar movimiento":"Add transaction","Cargar datos de ejemplo":"Load sample data",
   "Ajustes y datos":"Settings & data","deuda":"debt",
+  "Empezar de cero (borrar todo)":"Start over (delete all)","Datos restablecidos":"Data reset",
+  "¿Seguro que quieres borrar TODO y empezar de cero? Esto elimina tus movimientos, pagos, metas, cuentas y presupuesto. No se puede deshacer.":"Are you sure you want to delete EVERYTHING and start over? This removes your transactions, bills, goals, accounts and budget. It can't be undone.",
   // Movimientos
   "Movimientos":"Transactions","Ingresos del mes":"Income this month","Gastos del mes":"Expenses this month",
   "+ Agregar":"+ Add","Buscar…":"Search…","Todas":"All","Sin resultados con ese filtro.":"No results for that filter.",
@@ -1023,7 +1025,7 @@ function openAjustes(){
       <button class="btn ghost block" onclick="openCats()">Gestionar categorías</button>
       <button class="btn ghost block" onclick="exportar()">Exportar mis datos (respaldo)</button>
       <button class="btn ghost block" onclick="cargarEjemplo()">Cargar datos de ejemplo</button>
-      <button class="btn ghost block" style="color:var(--expense);border-color:var(--expense)" onclick="borrarTodo()">Borrar todos los datos</button>
+      <button class="btn ghost block" style="color:var(--expense);border-color:var(--expense)" onclick="borrarTodo()">Empezar de cero (borrar todo)</button>
       <button class="btn ghost block" onclick="logout()">Cerrar sesión</button>
       <button class="btn block" onclick="closeModal()">Cerrar</button>
     </div>`);
@@ -1063,7 +1065,11 @@ function exportar(){
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="mis-finanzas-respaldo.json"; a.click();
 }
-function borrarTodo(){ if(!confirm(tr("Esto borra TODOS tus movimientos, pagos y metas. ¿Seguro?")))return; state=seed(); save(); closeModal(); toast("Datos borrados"); render(); }
+function borrarTodo(){
+  if(!confirm(tr("¿Seguro que quieres borrar TODO y empezar de cero? Esto elimina tus movimientos, pagos, metas, cuentas y presupuesto. No se puede deshacer.")))return;
+  const fresh=seed(); fresh.profile=state.profile; // conserva tu cuenta (nombre, plan, idioma), resetea solo las finanzas
+  state=fresh; save(); closeModal(); toast("Datos restablecidos"); render();
+}
 function cargarEjemplo(){
   const g = state.categories.filter(c=>c.kind==="gasto");
   const i = state.categories.filter(c=>c.kind==="ingreso");
@@ -1431,6 +1437,7 @@ function openPerfil(){
     <button class="btn ghost block" style="margin-top:10px;border-color:var(--champagne);color:var(--champagne);" onclick="openPlanes()">✦ ${planActivo()?"Premium activo — administrar":"Ver planes y códigos"}</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openParejas()">👫 ${MODE==="household"?"Cuenta conjunta activa":"Cuenta de parejas"}</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openAsistente()">🤖 Asistente IA${planActivo()?"":" ✦"}</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="openAjustes()">⚙️ Ajustes y datos</button>
     <button class="btn ghost block" style="margin-top:8px;color:var(--expense);border-color:var(--expense);" onclick="logout()">Cerrar sesión</button>`);
 }
 function savePerfil(){ state.profile=state.profile||{}; state.profile.name=document.getElementById("pfName").value.trim();
