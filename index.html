@@ -196,9 +196,9 @@
       </div>
     </div>
     <div class="month-nav">
-      <button onclick="shiftMonth(-1)" aria-label="Mes anterior">‹</button>
+      <button id="mPrev" onclick="shiftMonth(-1)" aria-label="Mes anterior">‹</button>
       <span class="lbl" id="monthLabel">—</span>
-      <button onclick="shiftMonth(1)" aria-label="Mes siguiente">›</button>
+      <button id="mNext" onclick="shiftMonth(1)" aria-label="Mes siguiente">›</button>
     </div>
     <button class="avatar-btn" id="avatarBtn" onclick="openPerfil()" aria-label="Mi perfil">·</button>
   </div>
@@ -299,7 +299,36 @@ const TR_EN = {
   "Entra a tu cuenta":"Sign in to your account","Crea tu cuenta para empezar":"Create your account to start","Contraseña":"Password","Entrar":"Sign in","Crear cuenta":"Create account","¿No tienes cuenta?":"No account yet?","¿Ya tienes cuenta?":"Already have an account?","Crear una":"Create one",
   "Escribe tu correo y contraseña":"Enter your email and password","La contraseña debe tener al menos 6 caracteres":"Password must be at least 6 characters","Un momento…":"One moment…","Correo o contraseña incorrectos":"Wrong email or password","Ese correo ya tiene cuenta — mejor entra":"That email already has an account — sign in",
   // Comunes
-  "Cancelar":"Cancel","Guardar":"Save","Eliminar":"Delete","Agregar":"Add","Continuar":"Continue","hoy":"today","vence":"due","esperado/mes":"expected/mo"
+  "Cancelar":"Cancel","Guardar":"Save","Eliminar":"Delete","Agregar":"Add","Continuar":"Continue","hoy":"today","vence":"due","esperado/mes":"expected/mo",
+  // Auditoría idiomas — faltantes
+  "— tu patrimonio sube.":"— your net worth goes up.","¿Cuánto vas a aportar?":"How much will you add?",
+  ". También puedes agregar tus pagos fijos y tus metas de ahorro.":". You can also add your fixed bills and savings goals.",
+  "Agrega tu sueldo: monto, frecuencia (semanal, bi-weekly, mensual) y día de pago.":"Add your paycheck: amount, frequency (weekly, bi-weekly, monthly) and pay day.",
+  "Agrega tus cuentas y activos para ver la composición.":"Add your accounts and assets to see the breakdown.",
+  "cada vez que te paguen — registra el ingreso real de ese día.":"each time you get paid — logs the real income for that day.",
+  "Completa nombre y monto":"Fill in name and amount","Completa nombre y monto objetivo":"Fill in name and target amount",
+  "Datos de ejemplo cargados":"Sample data loaded","Deshacer pago":"Undo payment",
+  "Define cuánto quieres gastar como máximo en cada categoría. La barra se pone roja si te pasas.":"Set the most you want to spend in each category. The bar turns red if you go over.",
+  "Ej. Fondo de emergencia":"e.g. Emergency fund","Ej. Jesús":"e.g. Alex","Elige o crea una categoría":"Choose or create a category",
+  "Empieza registrando un ingreso o un gasto con el botón":"Start by logging income or an expense with the",
+  "Escribe un monto válido":"Enter a valid amount","Escribe un nombre":"Enter a name","Escribe el monto recibido":"Enter the amount received",
+  "Español":"Spanish","Ingreso registrado":"Income logged","Mínimo 6 caracteres":"At least 6 characters",
+  "No se puede: hay movimientos con esa categoría":"Can't: there are transactions with that category","Nuevo nombre:":"New name:",
+  "Pon el valor de la cuenta":"Enter the account value","Pon el saldo que debes":"Enter the balance you owe",
+  "Esto borra TODOS tus movimientos, pagos y metas. ¿Seguro?":"This deletes ALL your transactions, bills and goals. Sure?",
+  "Crea tu primera meta: fondo de emergencia, un carro, vacaciones, pagar una deuda…":"Create your first goal: emergency fund, a car, a vacation, pay off a debt…",
+  "Tu casa y tu carro van como":"Your house and car go in as","dos entradas":"two entries",
+  ": el bien como activo (lo que vale) y el préstamo como deuda (lo que debes). Tu \"equity\" sale solo de la resta. Actualiza los valores cada mes para ver crecer tu patrimonio.":": the asset for its value, and the loan as a separate debt. Your equity is just the difference. Update the values each month to watch your net worth grow.",
+  "Al pagar una deuda se registra el gasto del mes, se descuenta el interés y":"When you pay a debt, this month's expense is logged, interest is deducted and",
+  "baja tu saldo":"your balance drops",
+  "¿Ingresos como tu sueldo? Ahora se planean en la pestaña":"Income like your paycheck? It's now planned in the",
+  "(con frecuencia semanal, bi-weekly o mensual).":"(weekly, bi-weekly or monthly).",
+  "Nombre de la nueva categoría de gasto:":"Name of the new expense category:","Nombre de la nueva categoría de ingreso:":"Name of the new income category:",
+  "¿Eliminar esta meta?":"Delete this goal?","¿Eliminar esta cuenta?":"Delete this account?","¿Eliminar esta categoría?":"Delete this category?","¿Eliminar este pago recurrente?":"Delete this recurring bill?",
+  "Confirma tu correo primero (revisa tu email)":"Confirm your email first (check your inbox)",
+  "Cuenta creada ✓ Revisa tu correo para confirmar, luego entra.":"Account created ✓ Check your email to confirm, then sign in.",
+  "Tus datos se guardan de forma segura en la nube.":"Your data is stored securely in the cloud.",
+  "Mes anterior":"Previous month","Mes siguiente":"Next month"
 };
 const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
 function tr(html){ if(LANG!=="en"||typeof html!=="string") return html; let out=html; for(const [es,en] of TR_ORDER){ if(out.indexOf(es)>=0) out=out.split(es).join(en); } return out; }
@@ -396,6 +425,8 @@ function meQueda(m){ return ingresosMes(m) - gastosMes(m) - pagosPendientes(m) -
 function render(){
   document.getElementById("monthLabel").textContent = mesLabel(SEL);
   const ab=document.getElementById("avatarBtn"); if(ab) ab.textContent = perfilIniciales();
+  const mp=document.getElementById("mPrev"), mnx=document.getElementById("mNext");
+  if(mp) mp.setAttribute("aria-label", tr("Mes anterior")); if(mnx) mnx.setAttribute("aria-label", tr("Mes siguiente"));
   document.getElementById("fab").style.display = (VIEW==="inicio"||VIEW==="movimientos") ? "flex":"none";
   renderTabs();
   const el = document.getElementById("app");
@@ -749,8 +780,8 @@ function confirmarPago(id){
   save(); closeModal(); toast("Ingreso registrado ✓"); render();
 }
 function delTxn(id){ state.transactions=state.transactions.filter(t=>t.id!==id); save(); render(); }
-function delRec(id){ if(!confirm("¿Eliminar este pago recurrente?"))return; state.recurring=state.recurring.filter(r=>r.id!==id); save(); render(); }
-function delGoal(id){ if(!confirm("¿Eliminar esta meta?"))return; state.goals=state.goals.filter(g=>g.id!==id); save(); render(); }
+function delRec(id){ if(!confirm(tr("¿Eliminar este pago recurrente?")))return; state.recurring=state.recurring.filter(r=>r.id!==id); save(); render(); }
+function delGoal(id){ if(!confirm(tr("¿Eliminar esta meta?")))return; state.goals=state.goals.filter(g=>g.id!==id); save(); render(); }
 
 /* ============ Modales ============ */
 function modal(html){ document.getElementById("modalRoot").innerHTML = tr(`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">${html}</div></div>`); }
@@ -793,7 +824,7 @@ function fillCats(preselect){
   sel.onchange=function(){ if(this.value==="__new") nuevaCatInline(); };
 }
 function nuevaCatInline(){
-  const name=prompt("Nombre de la nueva categoría de "+(txnType==="gasto"?"gasto":"ingreso")+":");
+  const name=prompt(tr("Nombre de la nueva categoría de "+(txnType==="gasto"?"gasto":"ingreso")+":"));
   if(name&&name.trim()){ const c=addCat(name.trim(),txnType); fillCats(c.id); }
   else fillCats();
 }
@@ -924,7 +955,7 @@ function delBudget(catId){ delete state.budgets[catId]; save(); closeModal(); re
 function openAjustes(){
   modal(`
     <h3>Ajustes y datos</h3>
-    <div class="sub">Tus datos se guardan solo en este dispositivo.</div>
+    <div class="sub">Tus datos se guardan de forma segura en la nube.</div>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <button class="btn ghost block" onclick="openCats()">Gestionar categorías</button>
       <button class="btn ghost block" onclick="exportar()">Exportar mis datos (respaldo)</button>
@@ -957,19 +988,19 @@ function openCats(){
     </div>
     <div class="sheet-actions" style="margin-top:14px;"><button class="btn block" onclick="closeModal()">Listo</button></div>`);
 }
-function nuevaCat(kind){ const name=prompt("Nombre de la nueva categoría de "+(kind==="gasto"?"gasto":"ingreso")+":"); if(name&&name.trim()){ addCat(name.trim(),kind); openCats(); } }
-function renameCat(id){ const c=state.categories.find(x=>x.id===id); if(!c)return; const name=prompt("Nuevo nombre:",c.name); if(name&&name.trim()){ c.name=name.trim(); save(); openCats(); } }
+function nuevaCat(kind){ const name=prompt(tr("Nombre de la nueva categoría de "+(kind==="gasto"?"gasto":"ingreso")+":")); if(name&&name.trim()){ addCat(name.trim(),kind); openCats(); } }
+function renameCat(id){ const c=state.categories.find(x=>x.id===id); if(!c)return; const name=prompt(tr("Nuevo nombre:"),c.name); if(name&&name.trim()){ c.name=name.trim(); save(); openCats(); } }
 function delCat(id){
   const used=state.transactions.some(t=>t.categoryId===id)||state.recurring.some(r=>r.categoryId===id);
   if(used){ toast("No se puede: hay movimientos con esa categoría"); return; }
-  if(!confirm("¿Eliminar esta categoría?"))return;
+  if(!confirm(tr("¿Eliminar esta categoría?")))return;
   state.categories=state.categories.filter(c=>c.id!==id); save(); openCats();
 }
 function exportar(){
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="mis-finanzas-respaldo.json"; a.click();
 }
-function borrarTodo(){ if(!confirm("Esto borra TODOS tus movimientos, pagos y metas. ¿Seguro?"))return; state=seed(); save(); closeModal(); toast("Datos borrados"); render(); }
+function borrarTodo(){ if(!confirm(tr("Esto borra TODOS tus movimientos, pagos y metas. ¿Seguro?")))return; state=seed(); save(); closeModal(); toast("Datos borrados"); render(); }
 function cargarEjemplo(){
   const g = state.categories.filter(c=>c.kind==="gasto");
   const i = state.categories.filter(c=>c.kind==="ingreso");
@@ -1215,7 +1246,7 @@ function saveAccount(id){
   else state.accounts.push({id:uid(),paid:[],paidLog:[],...data});
   save(); closeModal(); toast("Guardado"); render();
 }
-function delAccount(id){ if(!confirm("¿Eliminar esta cuenta?"))return; state.accounts=state.accounts.filter(a=>a.id!==id); save(); render(); }
+function delAccount(id){ if(!confirm(tr("¿Eliminar esta cuenta?")))return; state.accounts=state.accounts.filter(a=>a.id!==id); save(); render(); }
 
 /* ============ util ============ */
 function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
