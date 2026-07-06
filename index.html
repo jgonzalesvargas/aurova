@@ -175,6 +175,9 @@
   .avatar-btn{width:32px;height:32px;border-radius:50%;background:var(--champagne);color:#1A1206;font-weight:700;font-size:12.5px;display:flex;align-items:center;justify-content:center;flex:none;font-family:var(--sans);letter-spacing:.02em;}
   .avatar-btn:hover{filter:brightness(1.06);}
   .avatar-lg{width:64px;height:64px;border-radius:50%;background:var(--champagne);color:#1A1206;font-weight:700;font-size:26px;font-family:var(--serif);display:flex;align-items:center;justify-content:center;margin:0 auto;}
+  .onb-opt{display:flex;align-items:center;gap:10px;text-align:left;width:100%;background:var(--surface2);border:1px solid var(--rule-strong);border-radius:12px;padding:13px 15px;color:var(--cream);font-size:14.5px;}
+  .onb-opt.sel{border-color:var(--champagne);background:rgba(201,169,106,.12);}
+  .onb-opt:hover{border-color:var(--champagne);}
 </style>
 </head>
 <body class="logged-out">
@@ -215,8 +218,10 @@
 <script>
 /* ============ Estado & persistencia ============ */
 const KEY = "mifin_v1";
-const money = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Math.round(n||0));
-const money2 = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
+function curInfo(){ const c=(typeof state!=="undefined"&&state.profile&&state.profile.currency)||"USD"; const loc={USD:"en-US",PEN:"es-PE",MXN:"es-MX",EUR:"es-ES",COP:"es-CO",ARS:"es-AR",CLP:"es-CL"}[c]||"en-US"; return {code:c,locale:loc}; }
+function curSymbol(){ const c=(typeof state!=="undefined"&&state.profile&&state.profile.currency)||"USD"; return {USD:"$",PEN:"S/",MXN:"$",EUR:"€",COP:"$",ARS:"$",CLP:"$"}[c]||"$"; }
+function money(n){ const {code,locale}=curInfo(); return new Intl.NumberFormat(locale,{style:"currency",currency:code,maximumFractionDigits:0}).format(Math.round(n||0)); }
+function money2(n){ const {code,locale}=curInfo(); return new Intl.NumberFormat(locale,{style:"currency",currency:code}).format(n||0); }
 const uid = () => Math.random().toString(36).slice(2,9);
 const todayISO = () => new Date().toISOString().slice(0,10);
 const curMonth = () => new Date().toISOString().slice(0,7);
@@ -240,7 +245,13 @@ function normalizeState(s){
   s.categories=s.categories||[]; s.transactions=s.transactions||[]; s.recurring=s.recurring||[];
   s.recurring.forEach(r=>{ if(!r.type) r.type="gasto"; if(!r.freq) r.freq="mensual"; });
   s.goals=s.goals||[]; s.budgets=s.budgets||{}; s.accounts=s.accounts||[];
-  s.profile = s.profile || {name:"",createdAt:todayISO()};
+  s.profile = s.profile || {};
+  if(s.profile.name==null) s.profile.name="";
+  if(s.profile.currency==null) s.profile.currency="USD";
+  if(s.profile.goal==null) s.profile.goal="";
+  if(s.profile.payFreq==null) s.profile.payFreq="";
+  if(s.profile.reminders==null) s.profile.reminders=true;
+  if(s.profile.createdAt==null) s.profile.createdAt=todayISO();
   // migración al modelo final: cada cuenta un solo lado (kind + value)
   const norm=[];
   s.accounts.forEach(a=>{
@@ -278,7 +289,7 @@ function seed(){
     cat("Servicios","gasto","#B892C4"), cat("Entretenimiento","gasto","#87B9C4"), cat("Salud","gasto","#7FB77E"),
     cat("Deudas","gasto","#D98E80"), cat("Otros gastos","gasto","#8A8477")
   ];
-  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], profile:{name:"",createdAt:todayISO()}, seeded:false };
+  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], profile:{name:"",goal:"",currency:"USD",payFreq:"",reminders:true,createdAt:todayISO()}, seeded:false };
 }
 
 /* ============ Helpers de datos ============ */
@@ -337,7 +348,9 @@ function viewInicio(){
   const maxCat = catRows.length?catRows[0][1]:1;
 
   return `
-    ${state.profile&&state.profile.name?`<div style="font-family:var(--serif);color:var(--cream);font-size:18px;margin:0 0 12px;">Hola, ${esc(state.profile.name)} 👋</div>`:""}
+    ${recordatorioInicio()}
+    ${state.profile&&state.profile.name?`<div style="font-family:var(--serif);color:var(--cream);font-size:18px;margin:0 0 4px;">Hola, ${esc(state.profile.name)} 👋</div>`:""}
+    ${state.profile&&state.profile.goal&&GOAL_TIPS[state.profile.goal]?`<div class="muted" style="font-size:12.5px;margin:0 0 12px;">💡 ${GOAL_TIPS[state.profile.goal]}</div>`:""}
     <div class="hero ${q<0?'neg':''}">
       <div class="lbl">Me queda para gastar</div>
       <div class="big num">${money(q)}</div>
@@ -750,7 +763,7 @@ function setRecType(t,preCat,preFreq){ recType=t;
   const list=t==="gasto"?gastoCats():ingresoCats();
   sel.innerHTML=list.map(c=>`<option value="${c.id}" ${preCat===c.id?"selected":""}>${esc(c.name)}</option>`).join("");
   const extra=document.getElementById("rExtra");
-  if(t==="ingreso"){ const f=preFreq||"mensual";
+  if(t==="ingreso"){ const f=preFreq||(state.profile&&state.profile.payFreq)||"mensual";
     extra.innerHTML=`<div class="field"><label>Frecuencia de pago</label><select id="rFreq">
       <option value="semanal" ${f==="semanal"?"selected":""}>Semanal</option>
       <option value="quincenal" ${f==="quincenal"?"selected":""}>Cada 2 semanas (bi-weekly)</option>
@@ -935,7 +948,7 @@ const patrimonio = ()=>totActivos()-totPasivos();
 const ratioDeuda = ()=>{ const A=totActivos(); return A>0?(totPasivos()/A*100):0; };
 
 const SVGTXT='font-family="Arial,Helvetica,sans-serif"';
-function moneyK(n){ const neg=n<0; n=Math.round(Math.abs(n)); const str=n>=1000?"$"+(n/1000).toFixed(n%1000===0?0:1)+"k":"$"+n; return (neg?"-":"")+str; }
+function moneyK(n){ const sym=curSymbol(); const neg=n<0; n=Math.round(Math.abs(n)); const str=n>=1000?sym+(n/1000).toFixed(n%1000===0?0:1)+"k":sym+n; return (neg?"-":"")+str; }
 function svgWrap(W,H,s){ return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block">${s}</svg>`; }
 function svgIngGas(meses){
   const data=meses.map(m=>({m,a:ingresosMes(m),b:gastosMes(m)}));
@@ -1132,25 +1145,89 @@ function fdate(iso){ if(!iso)return""; const [y,m,d]=iso.split("-"); return `${+
 let toastT;
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),1800); }
 
+/* ============ Onboarding (crear perfil) ============ */
+const ONB_GOALS=[["ahorrar","💰","Ahorrar / fondo de emergencia"],["deudas","💳","Salir de deudas"],["gastos","🔍","Entender mis gastos"],["presupuestar","📊","Presupuestar mejor"],["invertir","📈","Invertir / crecer patrimonio"]];
+const ONB_CUR=[["USD","Dólar estadounidense (USD $)"],["PEN","Sol peruano (S/)"],["MXN","Peso mexicano (MXN $)"],["EUR","Euro (€)"],["COP","Peso colombiano (COP $)"],["ARS","Peso argentino (ARS $)"],["CLP","Peso chileno (CLP $)"]];
+const ONB_FREQ=[["semanal","Semanal"],["quincenal","Cada 2 semanas (bi-weekly)"],["mensual","Mensual"],["","No es fijo / saltar"]];
+const ONB_TOTAL=5;
+let ONB={}, ONB_STEP=0;
 function maybeWelcome(){
   if(localStorage.getItem("mifin_welcomed")) return;
   if(state.transactions.length||state.accounts.length||state.recurring.length||state.goals.length){ localStorage.setItem("mifin_welcomed","1"); return; }
-  modal(`
-    <div style="text-align:center;">
-      <div class="mono" style="margin:0 auto 14px;width:46px;height:46px;font-size:22px;">$</div>
-      <h3 style="font-size:23px;">Bienvenido</h3>
-      <div class="sub" style="margin-bottom:18px;">Controla tus ingresos, gastos, pagos, metas y tu patrimonio — todo en un solo lugar. Tus datos se guardan <b style="color:var(--cream)">solo en tu dispositivo</b>, son privados.</div>
-    </div>
-    <div class="field" style="margin-bottom:14px;"><label>¿Cómo te llamas?</label><input id="wcName" type="text" placeholder="Tu nombre"></div>
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <button class="btn block" onclick="welcomeExample()">Explorar con datos de ejemplo</button>
-      <button class="btn ghost block" onclick="welcomeFresh()">Empezar de cero</button>
-    </div>
-    <p class="muted" style="font-size:11.5px;text-align:center;margin:14px 0 0;">Powered by Quantum Services</p>`);
+  ONB={name:(state.profile&&state.profile.name)||"",goal:"",currency:"USD",payFreq:"",reminders:true};
+  ONB_STEP=0; renderOnb();
 }
-function saveWcName(){ const el=document.getElementById("wcName"); if(el&&el.value.trim()){ state.profile=state.profile||{}; state.profile.name=el.value.trim(); } }
-function welcomeExample(){ saveWcName(); localStorage.setItem("mifin_welcomed","1"); cargarEjemplo(); }
-function welcomeFresh(){ saveWcName(); localStorage.setItem("mifin_welcomed","1"); save(); closeModal(); render(); }
+function onbDots(){ let d=""; for(let i=0;i<ONB_TOTAL;i++){ d+=`<span style="width:7px;height:7px;border-radius:50%;background:${i===ONB_STEP?'var(--champagne)':'var(--rule-strong)'};display:inline-block;"></span>`; } return `<div style="display:flex;gap:6px;justify-content:center;margin-bottom:18px;">${d}</div>`; }
+function onbShell(inner){
+  const back = ONB_STEP>0?`<button class="linkbtn" onclick="onbBack()" style="position:absolute;left:0;top:0;">‹ Atrás</button>`:"";
+  modal(`<div style="position:relative;padding-top:6px;">${back}${onbDots()}${inner}</div>`);
+}
+function onbBack(){ if(ONB_STEP>0){ ONB_STEP--; renderOnb(); } }
+function onbNext(){ ONB_STEP++; renderOnb(); }
+function renderOnb(){
+  if(ONB_STEP===0){
+    onbShell(`
+      <div style="text-align:center;">
+        <div class="mono" style="margin:0 auto 12px;width:46px;height:46px;font-size:22px;">$</div>
+        <h3 style="font-family:var(--serif);font-size:23px;">Bienvenido a Aurova</h3>
+        <div class="sub" style="margin:6px 0 16px;">Personalicémosla en 30 segundos.</div>
+      </div>
+      <div class="field"><label>¿Cómo te llamas?</label><input id="onbName" type="text" value="${esc(ONB.name)}" placeholder="Tu nombre"></div>
+      <button class="btn block" onclick="ONB.name=(document.getElementById('onbName').value||'').trim();onbNext()">Continuar</button>`);
+  } else if(ONB_STEP===1){
+    onbShell(`
+      <h3 style="font-family:var(--serif);font-size:21px;text-align:center;">¿Qué te trae a Aurova?</h3>
+      <div class="sub" style="text-align:center;margin-bottom:14px;">Tu meta principal.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${ONB_GOALS.map(([k,ic,l])=>`<button class="onb-opt ${ONB.goal===k?'sel':''}" onclick="ONB.goal='${k}';renderOnb()"><span style="font-size:18px">${ic}</span> ${l}</button>`).join("")}
+      </div>
+      <button class="btn block" style="margin-top:14px;" onclick="onbNext()">Continuar</button>`);
+  } else if(ONB_STEP===2){
+    onbShell(`
+      <h3 style="font-family:var(--serif);font-size:21px;text-align:center;">¿En qué moneda manejas tu dinero?</h3>
+      <div class="sub" style="text-align:center;margin-bottom:14px;">Puedes cambiarla después.</div>
+      <div class="field"><select id="onbCur">${ONB_CUR.map(([k,l])=>`<option value="${k}" ${ONB.currency===k?'selected':''}>${l}</option>`).join("")}</select></div>
+      <button class="btn block" onclick="ONB.currency=document.getElementById('onbCur').value;onbNext()">Continuar</button>`);
+  } else if(ONB_STEP===3){
+    onbShell(`
+      <h3 style="font-family:var(--serif);font-size:21px;text-align:center;">¿Cada cuánto te pagan?</h3>
+      <div class="sub" style="text-align:center;margin-bottom:14px;">Para armar tu plan de ingresos.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${ONB_FREQ.map(([k,l])=>`<button class="onb-opt ${ONB.payFreq===k?'sel':''}" onclick="ONB.payFreq='${k}';renderOnb()">${l}</button>`).join("")}
+      </div>
+      <button class="btn block" style="margin-top:14px;" onclick="onbNext()">Continuar</button>`);
+  } else {
+    onbShell(`
+      <h3 style="font-family:var(--serif);font-size:21px;text-align:center;">Recordatorios</h3>
+      <div class="sub" style="text-align:center;margin-bottom:14px;">Te avisamos dentro de la app cuando tengas pagos próximos.</div>
+      <label style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--rule-strong);border-radius:12px;padding:14px 16px;margin-bottom:18px;cursor:pointer;">
+        <span>Activar recordatorios de pagos</span>
+        <input id="onbRem" type="checkbox" ${ONB.reminders?'checked':''} style="width:20px;height:20px;accent-color:var(--champagne);">
+      </label>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="btn block" onclick="finishOnb(true)">Explorar con datos de ejemplo</button>
+        <button class="btn ghost block" onclick="finishOnb(false)">Empezar de cero</button>
+      </div>`);
+  }
+}
+function finishOnb(example){
+  const rem=document.getElementById("onbRem"); if(rem) ONB.reminders=rem.checked;
+  state.profile=state.profile||{};
+  state.profile.name=ONB.name; state.profile.goal=ONB.goal; state.profile.currency=ONB.currency||"USD";
+  state.profile.payFreq=ONB.payFreq; state.profile.reminders=ONB.reminders;
+  localStorage.setItem("mifin_welcomed","1");
+  if(example){ cargarEjemplo(); } else { save(); closeModal(); render(); }
+}
+const GOAL_TIPS={ahorrar:"Crea una meta de ahorro y aparta un poco cada mes.",deudas:"Registra tus deudas en Análisis y baja el saldo cada vez que pagas.",gastos:"Mira 'Gastos por categoría' abajo para ver a dónde se va tu dinero.",presupuestar:"Ponle un límite a tus categorías en la pestaña Plan.",invertir:"Registra tus inversiones en Análisis y observa crecer tu patrimonio."};
+function recordatorioInicio(){
+  if(!(state.profile&&state.profile.reminders)) return "";
+  if(SEL!==curMonth()) return "";
+  const hoy=new Date().getDate();
+  const prox=pagosDelMes(SEL).filter(p=>!p.paid && p.dueDay>=hoy && (p.dueDay-hoy)<=5).sort((a,b)=>a.dueDay-b.dueDay)[0];
+  if(!prox) return "";
+  const dias=prox.dueDay-hoy;
+  return `<div style="background:rgba(216,166,87,.12);border:1px solid rgba(216,166,87,.4);border-radius:12px;padding:11px 14px;margin-bottom:12px;font-size:13px;color:var(--warn);">⏰ <b>${esc(prox.name)}</b> vence ${dias===0?'hoy':('en '+dias+(dias===1?' día':' días'))} · ${money(prox.amount)}</div>`;
+}
 
 /* ============ Perfil ============ */
 function perfilIniciales(){
@@ -1169,6 +1246,8 @@ function openPerfil(){
     </div>
     <div class="field"><label>Tu nombre</label><input id="pfName" type="text" value="${esc(p.name||"")}" placeholder="Ej. Jesús"></div>
     <div class="field"><label>Correo</label><input type="email" value="${esc(email)}" disabled style="opacity:.55;cursor:not-allowed;"></div>
+    <div class="field"><label>Moneda</label><select id="pfCur">${ONB_CUR.map(([k,l])=>`<option value="${k}" ${(p.currency||"USD")===k?"selected":""}>${l}</option>`).join("")}</select></div>
+    <label style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--rule-strong);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer;"><span style="font-size:14px;">Recordatorios de pagos</span><input id="pfRem" type="checkbox" ${p.reminders?"checked":""} style="width:20px;height:20px;accent-color:var(--champagne);"></label>
     <p class="muted" style="font-size:12px;margin:2px 0 4px;">Miembro desde ${p.createdAt?fdate(p.createdAt):"hoy"}.</p>
     <div class="sheet-actions">
       <button class="btn ghost" onclick="closeModal()">Cerrar</button>
@@ -1176,7 +1255,10 @@ function openPerfil(){
     </div>
     <button class="btn ghost block" style="margin-top:10px;color:var(--expense);border-color:var(--expense);" onclick="logout()">Cerrar sesión</button>`);
 }
-function savePerfil(){ state.profile=state.profile||{}; state.profile.name=document.getElementById("pfName").value.trim(); save(); closeModal(); toast("Perfil actualizado"); render(); }
+function savePerfil(){ state.profile=state.profile||{}; state.profile.name=document.getElementById("pfName").value.trim();
+  const c=document.getElementById("pfCur"); if(c) state.profile.currency=c.value;
+  const r=document.getElementById("pfRem"); if(r) state.profile.reminders=r.checked;
+  save(); closeModal(); toast("Perfil actualizado"); render(); }
 
 /* ============ Autenticación + nube (Supabase) ============ */
 const SB_URL="https://ljkfwgoqpwfckhqhklhi.supabase.co";
