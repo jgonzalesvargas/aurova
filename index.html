@@ -328,7 +328,24 @@ const TR_EN = {
   "Confirma tu correo primero (revisa tu email)":"Confirm your email first (check your inbox)",
   "Cuenta creada ✓ Revisa tu correo para confirmar, luego entra.":"Account created ✓ Check your email to confirm, then sign in.",
   "Tus datos se guardan de forma segura en la nube.":"Your data is stored securely in the cloud.",
-  "Mes anterior":"Previous month","Mes siguiente":"Next month"
+  "Mes anterior":"Previous month","Mes siguiente":"Next month",
+  // Planes / códigos / referidos
+  "Planes":"Plans","Desbloquea todo Aurova":"Unlock all of Aurova","Tienes Premium":"You have Premium","para siempre":"forever",
+  "Movimientos, pagos, metas, presupuesto, patrimonio, análisis y 2 idiomas.":"Transactions, bills, goals, budget, net worth, insights and 2 languages.",
+  "Todo lo de Free, más reportes en PDF, modo parejas, asistente IA, categorías ilimitadas y soporte prioritario.":"Everything in Free, plus PDF reports, couples mode, AI assistant, unlimited categories and priority support.",
+  "(próximamente)":"(coming soon)","Hazte Premium":"Go Premium","El cobro llega pronto — por ahora usa un código":"Billing is coming soon — for now use a code",
+  "¿Tienes un código?":"Have a code?","Canjear":"Redeem","Invita y gana":"Invite & earn",
+  "Comparte tu código. Cada amigo que entre te da":"Share your code. Each friend who joins gives you","1 mes gratis":"1 free month",", y él también gana.":", and they win too.",
+  "Has invitado a":"You've invited","persona":"person","personas":"people","Compartir":"Share",
+  "Panel de admin (códigos)":"Admin panel (codes)","Premium activo — administrar":"Premium active — manage","Ver planes y códigos":"See plans & codes",
+  "Validando…":"Validating…","Copiado ✓":"Copied ✓","Escribe un código":"Enter a code","No puedes usar tu propio código":"You can't use your own code",
+  "Ya usaste un código de referido":"You already used a referral code","Código no válido o vencido":"Invalid or expired code",
+  "¡Premium gratis para siempre! 🎉":"Free Premium forever! 🎉","¡Premium gratis por":"Free Premium for","meses! 🎉":"months! 🎉","meses":"months",
+  "¡Código válido! Ganaste 1 mes de Premium gratis 🎉":"Valid code! You earned 1 free month of Premium 🎉",
+  "Descuento de":"Discount of","% aplicado ✓":"% applied ✓","Descuento":"Discount",
+  "Nuevo código":"New code","Tipo":"Type","Crear código":"Create code","Código creado ✓":"Code created ✓","Cargando…":"Loading…","Sin códigos aún.":"No codes yet.",
+  "Meses gratis (vacío=siempre)":"Free months (empty=forever)","% de descuento":"% discount","VIP (gratis)":"VIP (free)","Descuento %":"Discount %",
+  "Códigos":"Codes","No se pudo crear":"Couldn't create","¿Eliminar este código?":"Delete this code?"
 };
 const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
 function tr(html){ if(LANG!=="en"||typeof html!=="string") return html; let out=html; for(const [es,en] of TR_ORDER){ if(out.indexOf(es)>=0) out=out.split(es).join(en); } return out; }
@@ -358,6 +375,12 @@ function normalizeState(s){
   if(s.profile.payFreq==null) s.profile.payFreq="";
   if(s.profile.reminders==null) s.profile.reminders=true;
   if(s.profile.lang==null) s.profile.lang="es";
+  if(s.profile.plan==null) s.profile.plan="free";
+  if(s.profile.planSource==null) s.profile.planSource="";
+  if(s.profile.planExpires===undefined) s.profile.planExpires=null;
+  if(s.profile.referralCode==null) s.profile.referralCode="";
+  if(s.profile.referredBy==null) s.profile.referredBy="";
+  if(s.profile.discount===undefined) s.profile.discount=null;
   if(s.profile.createdAt==null) s.profile.createdAt=todayISO();
   // migración al modelo final: cada cuenta un solo lado (kind + value)
   const norm=[];
@@ -396,7 +419,7 @@ function seed(){
     cat("Servicios","gasto","#B892C4"), cat("Entretenimiento","gasto","#87B9C4"), cat("Salud","gasto","#7FB77E"),
     cat("Deudas","gasto","#D98E80"), cat("Otros gastos","gasto","#8A8477")
   ];
-  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], profile:{name:"",goal:"",currency:"USD",payFreq:"",reminders:true,lang:"es",createdAt:todayISO()}, seeded:false };
+  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], profile:{name:"",goal:"",currency:"USD",payFreq:"",reminders:true,lang:"es",plan:"free",planSource:"",planExpires:null,referralCode:"",referredBy:"",discount:null,createdAt:todayISO()}, seeded:false };
 }
 
 /* ============ Helpers de datos ============ */
@@ -1364,13 +1387,137 @@ function openPerfil(){
       <button class="btn ghost" onclick="closeModal()">Cerrar</button>
       <button class="btn" onclick="savePerfil()">Guardar</button>
     </div>
-    <button class="btn ghost block" style="margin-top:10px;color:var(--expense);border-color:var(--expense);" onclick="logout()">Cerrar sesión</button>`);
+    <button class="btn ghost block" style="margin-top:10px;border-color:var(--champagne);color:var(--champagne);" onclick="openPlanes()">✦ ${planActivo()?"Premium activo — administrar":"Ver planes y códigos"}</button>
+    <button class="btn ghost block" style="margin-top:8px;color:var(--expense);border-color:var(--expense);" onclick="logout()">Cerrar sesión</button>`);
 }
 function savePerfil(){ state.profile=state.profile||{}; state.profile.name=document.getElementById("pfName").value.trim();
   const c=document.getElementById("pfCur"); if(c) state.profile.currency=c.value;
   const r=document.getElementById("pfRem"); if(r) state.profile.reminders=r.checked;
   const lg=document.getElementById("pfLang"); if(lg){ state.profile.lang=lg.value; LANG=lg.value; }
   save(); closeModal(); toast("Perfil actualizado"); render(); }
+
+/* ============ Planes, códigos y referidos ============ */
+const ADMIN_EMAIL = "jesusgonzales0703@gmail.com";
+let REF_COUNT = 0;
+function esAdmin(){ return USER && USER.email && USER.email.toLowerCase()===ADMIN_EMAIL; }
+function planActivo(){
+  const p=state.profile||{};
+  if(p.plan==="premium"){ if(!p.planExpires) return true; if(new Date(p.planExpires) > new Date()) return true; }
+  if(REF_COUNT>0) return true;
+  return false;
+}
+function genRefCode(){
+  const base=(((state.profile&&state.profile.name)||"AUR").replace(/[^A-Za-z]/g,"").slice(0,4).toUpperCase())||"AUR";
+  return base+"-"+Math.random().toString(36).slice(2,6).toUpperCase();
+}
+async function ensureReferral(){
+  if(!USER||!state.profile) return;
+  if(state.profile.referralCode) return;
+  let code=null;
+  try{ const {data}=await sb.from("referral_codes").select("code").eq("owner_id",USER.id).maybeSingle(); if(data) code=data.code; }catch(e){}
+  if(!code){ for(let i=0;i<5;i++){ const c=genRefCode(); try{ const {error}=await sb.from("referral_codes").insert({code:c,owner_id:USER.id}); if(!error){ code=c; break; } }catch(e){} } }
+  if(code){ state.profile.referralCode=code; save(); }
+}
+async function loadReferralStats(){
+  if(!USER||!state.profile||!state.profile.referralCode){ REF_COUNT=0; return; }
+  try{ const {count}=await sb.from("referrals").select("*",{count:"exact",head:true}).eq("referrer_code",state.profile.referralCode); REF_COUNT=count||0; }catch(e){ REF_COUNT=0; }
+}
+async function redeemCode(raw){
+  const code=(raw||"").trim().toUpperCase();
+  if(!code) return {ok:false,msg:"Escribe un código"};
+  try{
+    const {data:promo}=await sb.from("promo_codes").select("*").eq("code",code).eq("active",true).maybeSingle();
+    if(promo){
+      try{ await sb.from("redemptions").insert({user_id:USER.id,code,kind:promo.kind}); }catch(e){}
+      if(promo.kind==="vip"){
+        state.profile.plan="premium"; state.profile.planSource="vip"; state.profile.planExpires = promo.months? isoPlusMonths(promo.months) : null; save();
+        return {ok:true,msg: promo.months? ("¡Premium gratis por "+promo.months+" meses! 🎉") : "¡Premium gratis para siempre! 🎉"};
+      } else { state.profile.discount={code,percent:promo.percent}; save(); return {ok:true,msg:"Descuento de "+promo.percent+"% aplicado ✓"}; }
+    }
+  }catch(e){}
+  try{
+    const {data:rc}=await sb.from("referral_codes").select("owner_id").eq("code",code).maybeSingle();
+    if(rc){
+      if(rc.owner_id===USER.id) return {ok:false,msg:"No puedes usar tu propio código"};
+      if(state.profile.referredBy) return {ok:false,msg:"Ya usaste un código de referido"};
+      try{ const {error}=await sb.from("referrals").insert({referrer_code:code,referee_id:USER.id}); if(error) throw error; }
+      catch(e){ return {ok:false,msg:"Ya usaste un código de referido"}; }
+      state.profile.referredBy=code; state.profile.plan="premium"; state.profile.planSource="referido"; state.profile.planExpires=isoPlusMonths(1); save();
+      return {ok:true,msg:"¡Código válido! Ganaste 1 mes de Premium gratis 🎉"};
+    }
+  }catch(e){}
+  return {ok:false,msg:"Código no válido o vencido"};
+}
+function openPlanes(){
+  const pro=planActivo(), p=state.profile||{};
+  modal(`
+    <div style="text-align:center;">
+      <div class="eyebrow">Aurova</div>
+      <h3 style="font-family:var(--serif);font-size:24px;margin:4px 0;color:var(--cream);">${pro?"Premium ✦":"Planes"}</h3>
+      <div class="sub">${pro?("Tienes Premium"+(p.planExpires?(" hasta "+fdate(p.planExpires)):" para siempre")):"Desbloquea todo Aurova"}</div>
+    </div>
+    <div class="card" style="margin:14px 0 10px;"><div style="font-weight:700;color:var(--cream);margin-bottom:4px;">Free</div><div class="muted" style="font-size:13px;">Movimientos, pagos, metas, presupuesto, patrimonio, análisis y 2 idiomas.</div></div>
+    <div class="card" style="border-color:var(--champagne);"><div style="font-weight:700;color:var(--champagne);margin-bottom:4px;">Premium ✦</div><div class="muted" style="font-size:13px;">Todo lo de Free, más reportes en PDF, modo parejas, asistente IA, categorías ilimitadas y soporte prioritario. <i>(próximamente)</i></div></div>
+    ${pro?"":`<button class="btn block" style="margin-top:12px;" onclick="toast('El cobro llega pronto — por ahora usa un código')">Hazte Premium</button>`}
+    <div class="field" style="margin-top:16px;"><label>¿Tienes un código?</label>
+      <div style="display:flex;gap:8px;"><input id="plCode" type="text" placeholder="Ej. FAMILIA2026" style="flex:1;text-transform:uppercase;"><button class="btn sm" onclick="canjear()">Canjear</button></div></div>
+    <div id="plMsg"></div>
+    <div class="card" style="margin-top:16px;">
+      <div class="eyebrow">Invita y gana</div>
+      <div class="muted" style="font-size:13px;margin:6px 0;">Comparte tu código. Cada amigo que entre te da <b style="color:var(--champagne)">1 mes gratis</b>, y él también gana.</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--rule-strong);border-radius:11px;padding:12px 14px;">
+        <span class="num" style="font-family:var(--serif);font-size:18px;color:var(--champagne);letter-spacing:.04em;">${esc(p.referralCode||"…")}</span>
+        <button class="btn ghost sm" onclick="compartirRef()">Compartir</button></div>
+      <div class="muted" style="font-size:12px;margin-top:8px;">Has invitado a <b style="color:var(--cream)">${REF_COUNT}</b> ${REF_COUNT===1?"persona":"personas"}.</div>
+    </div>
+    ${esAdmin()?`<button class="btn ghost block" style="margin-top:14px;" onclick="openAdmin()">⚙️ Panel de admin (códigos)</button>`:""}
+    <button class="btn ghost block" style="margin-top:10px;" onclick="closeModal()">Cerrar</button>`);
+}
+function canjear(){
+  const raw=document.getElementById("plCode").value;
+  const m=document.getElementById("plMsg"); if(m) m.innerHTML=`<p class="muted" style="font-size:12.5px;margin:8px 0;">Validando…</p>`;
+  redeemCode(raw).then(r=>{
+    const el=document.getElementById("plMsg"); if(el) el.innerHTML=`<p style="font-size:12.5px;margin:8px 0;color:${r.ok?'var(--income)':'var(--expense)'};">${esc(r.msg)}</p>`;
+    if(r.ok){ setTimeout(()=>{ openPlanes(); render(); }, 1100); }
+  });
+}
+function compartirRef(){
+  const code=(state.profile&&state.profile.referralCode)||"", link="https://aurova-lovat.vercel.app";
+  const txt=`Únete a Aurova con mi código ${code}: ${link}`;
+  if(navigator.share){ navigator.share({title:"Aurova",text:txt,url:link}).catch(()=>{}); }
+  else if(navigator.clipboard){ navigator.clipboard.writeText(txt); toast("Copiado ✓"); }
+  else toast(code);
+}
+function openAdmin(){
+  modal(`
+    <div style="text-align:center;"><div class="eyebrow">Admin</div><h3 style="font-family:var(--serif);font-size:22px;color:var(--cream);">Códigos</h3></div>
+    <div class="field"><label>Nuevo código</label><input id="apCode" type="text" placeholder="FAMILIA2026" style="text-transform:uppercase;"></div>
+    <div class="field row2">
+      <div><label>Tipo</label><select id="apKind" onchange="document.getElementById('apValLbl').textContent=this.value==='vip'?'Meses gratis (vacío=siempre)':'% de descuento'"><option value="vip">VIP (gratis)</option><option value="discount">Descuento %</option></select></div>
+      <div><label id="apValLbl">Meses gratis (vacío=siempre)</label><input id="apVal" type="number" placeholder=""></div></div>
+    <button class="btn block" onclick="crearPromo()">Crear código</button>
+    <div id="apList" style="margin-top:14px;"><p class="muted" style="font-size:12px;">Cargando…</p></div>
+    <button class="btn ghost block" style="margin-top:12px;" onclick="openPlanes()">‹ Volver</button>`);
+  listarPromos();
+}
+async function crearPromo(){
+  const code=(document.getElementById("apCode").value||"").trim().toUpperCase();
+  const kind=document.getElementById("apKind").value;
+  const val=parseInt(document.getElementById("apVal").value); const num=isNaN(val)?null:val;
+  if(!code){ toast("Escribe un código"); return; }
+  const row={code,kind,active:true}; if(kind==="vip") row.months=num; else row.percent=num;
+  try{ const {error}=await sb.from("promo_codes").insert(row); if(error) throw error; toast("Código creado ✓"); openAdmin(); }
+  catch(e){ toast((e&&e.message)||"No se pudo crear"); }
+}
+async function listarPromos(){
+  try{
+    const {data}=await sb.from("promo_codes").select("*").order("created_at",{ascending:false});
+    const el=document.getElementById("apList"); if(!el) return;
+    if(!data||!data.length){ el.innerHTML=`<p class="muted" style="font-size:12px;">Sin códigos aún.</p>`; return; }
+    el.innerHTML=data.map(c=>`<div class="row"><div class="body"><div class="t1">${esc(c.code)}</div><div class="t2">${c.kind==="vip"?("VIP · "+(c.months?(c.months+" meses"):"para siempre")):("Descuento "+c.percent+"%")}</div></div><button class="del" onclick="borrarPromo('${esc(c.code)}')" aria-label="Eliminar">×</button></div>`).join("");
+  }catch(e){}
+}
+async function borrarPromo(code){ if(!confirm(tr("¿Eliminar este código?")))return; try{ await sb.from("promo_codes").delete().eq("code",code); listarPromos(); }catch(e){} }
 
 /* ============ Autenticación + nube (Supabase) ============ */
 const SB_URL="https://ljkfwgoqpwfckhqhklhi.supabase.co";
@@ -1379,7 +1526,8 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY);
 let USER=null, authMode="login";
 
 function showAuth(){ document.body.classList.add("logged-out"); document.getElementById("modalRoot").innerHTML=""; renderAuth(); }
-function showApp(){ document.body.classList.remove("logged-out"); render(); maybeWelcome(); }
+function showApp(){ document.body.classList.remove("logged-out"); render(); maybeWelcome();
+  if(USER){ ensureReferral().then(loadReferralStats).then(()=>{ if(!document.getElementById("modalRoot").innerHTML) render(); }).catch(()=>{}); } }
 function renderAuth(msg){
   document.getElementById("authGate").innerHTML=tr(`
     <div class="auth-card">
