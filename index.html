@@ -367,7 +367,13 @@ const TR_EN = {
   // Asistente IA
   "Asistente Aurova":"Aurova Assistant","Pregúntame sobre tu dinero.":"Ask me about your money.","Pregúntame sobre tu dinero":"Ask me about your money","Asistente IA":"AI Assistant","El asistente IA":"The AI assistant","Enviar":"Send","Ej. ¿En qué gasto de más?":"e.g. Where am I overspending?",
   "¿En qué estoy gastando de más?":"Where am I overspending?","¿Cómo puedo ahorrar más?":"How can I save more?","Dame un consejo para mis deudas":"Give me advice on my debts","¿Voy bien este mes?":"Am I doing OK this month?",
-  "El asistente aún no está configurado (falta la API key).":"The assistant isn't set up yet (missing API key).","Hubo un problema al conectar. Intenta de nuevo.":"There was a connection problem. Try again.","No pude responder ahora. Intenta de nuevo.":"I couldn't respond right now. Try again.","No pude responder ahora.":"I couldn't respond right now."
+  "El asistente aún no está configurado (falta la API key).":"The assistant isn't set up yet (missing API key).","Hubo un problema al conectar. Intenta de nuevo.":"There was a connection problem. Try again.","No pude responder ahora. Intenta de nuevo.":"I couldn't respond right now. Try again.","No pude responder ahora.":"I couldn't respond right now.",
+  "Llegaste al límite de preguntas por hoy. Vuelve mañana.":"You've reached today's question limit. Come back tomorrow.",
+  // Fase 1: recuperar contraseña, patrimonio, códigos
+  "Evolución del patrimonio":"Net worth over time","Vence en (días, vacío = nunca)":"Expires in (days, empty = never)",
+  "¿Olvidaste tu contraseña?":"Forgot your password?","Escribe tu correo primero":"Enter your email first",
+  "Te enviamos un correo para restablecer tu contraseña. Revisa tu bandeja (y spam).":"We sent you an email to reset your password. Check your inbox (and spam).",
+  "No se pudo enviar. Intenta de nuevo.":"Couldn't send. Try again.","Nueva contraseña":"New password","Escribe tu nueva contraseña.":"Enter your new password.","Guardar contraseña":"Save password","No se pudo. Intenta de nuevo.":"Couldn't do it. Try again."
 };
 const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
 function tr(html){ if(LANG!=="en"||typeof html!=="string") return html; let out=html; for(const [es,en] of TR_ORDER){ if(out.indexOf(es)>=0) out=out.split(es).join(en); } return out; }
@@ -389,7 +395,7 @@ function mapTipo(t,kind){
 function normalizeState(s){
   s.categories=s.categories||[]; s.transactions=s.transactions||[]; s.recurring=s.recurring||[];
   s.recurring.forEach(r=>{ if(!r.type) r.type="gasto"; if(!r.freq) r.freq="mensual"; });
-  s.goals=s.goals||[]; s.budgets=s.budgets||{}; s.accounts=s.accounts||[];
+  s.goals=s.goals||[]; s.budgets=s.budgets||{}; s.accounts=s.accounts||[]; s.nwHistory=s.nwHistory||[];
   s.profile = s.profile || {};
   if(s.profile.name==null) s.profile.name="";
   if(s.profile.currency==null) s.profile.currency="USD";
@@ -404,6 +410,7 @@ function normalizeState(s){
   if(s.profile.referredBy==null) s.profile.referredBy="";
   if(s.profile.discount===undefined) s.profile.discount=null;
   if(s.profile.household===undefined) s.profile.household=null;
+  if(s.profile.iaUsage==null) s.profile.iaUsage={date:"",count:0};
   if(s.profile.createdAt==null) s.profile.createdAt=todayISO();
   // migración al modelo final: cada cuenta un solo lado (kind + value)
   const norm=[];
@@ -420,14 +427,22 @@ function normalizeState(s){
   return s;
 }
 // Claves de "finanzas" (lo que se comparte en cuenta conjunta; el perfil NO se comparte)
-const FINANCE_KEYS=["categories","transactions","recurring","goals","budgets","accounts"];
+const FINANCE_KEYS=["categories","transactions","recurring","goals","budgets","accounts","nwHistory"];
 function financesOf(s){ const o={}; FINANCE_KEYS.forEach(k=>{ if(s[k]!==undefined) o[k]=s[k]; }); return o; }
 function load(){
   try{ const raw = localStorage.getItem(KEY); if(raw) return normalizeState(JSON.parse(raw)); }catch(e){}
   return seed();
 }
 let saveTimer;
+function recordNW(){
+  if(!state.nwHistory) state.nwHistory=[];
+  const m=curMonth(), v=Math.round(patrimonio());
+  const i=state.nwHistory.findIndex(x=>x.m===m);
+  if(i>=0) state.nwHistory[i].v=v; else state.nwHistory.push({m,v});
+  state.nwHistory=state.nwHistory.slice(-24);
+}
 function save(){
+  try{ recordNW(); }catch(e){}
   localStorage.setItem(KEY, JSON.stringify(state));
   if(USER){ clearTimeout(saveTimer); saveTimer=setTimeout(pushCloud, 700); }
 }
@@ -453,7 +468,7 @@ function seed(){
     cat("Servicios","gasto","#B892C4"), cat("Entretenimiento","gasto","#87B9C4"), cat("Salud","gasto","#7FB77E"),
     cat("Deudas","gasto","#D98E80"), cat("Otros gastos","gasto","#8A8477")
   ];
-  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], profile:{name:"",goal:"",currency:"USD",payFreq:"",reminders:true,lang:"es",plan:"free",planSource:"",planExpires:null,referralCode:"",referredBy:"",discount:null,household:null,createdAt:todayISO()}, seeded:false };
+  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], nwHistory:[], profile:{name:"",goal:"",currency:"USD",payFreq:"",reminders:true,lang:"es",plan:"free",planSource:"",planExpires:null,referralCode:"",referredBy:"",discount:null,household:null,createdAt:todayISO()}, seeded:false };
 }
 
 /* ============ Helpers de datos ============ */
@@ -1166,6 +1181,19 @@ function svgAhorro(meses){
     s+=`<text x="${cx}" y="${H-7}" fill="#8A8477" font-size="9" text-anchor="middle" ${SVGTXT}>${mlabel3(d.m)}</text>`;});
   return svgWrap(W,H,s);
 }
+function svgNW(){
+  const h=(state.nwHistory||[]).slice(-8);
+  if(h.length<2) return "";
+  const vals=h.map(x=>+x.v||0); const max=Math.max(...vals,1), min=Math.min(...vals,0); const range=(max-min)||1;
+  const W=340,H=176,padB=22,padT=22,area=H-padB-padT,n=h.length,gw=W/n;
+  let s=`<line x1="0" y1="${H-padB}" x2="${W}" y2="${H-padB}" stroke="rgba(236,231,220,.12)"/>`;
+  const pts=h.map((x,i)=>[i*gw+gw/2, H-padB-(((+x.v||0)-min)/range)*area]);
+  s+=`<path d="${pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ")}" fill="none" stroke="#C9A96A" stroke-width="2"/>`;
+  pts.forEach((p,i)=>{ s+=`<circle cx="${p[0]}" cy="${p[1]}" r="2.5" fill="#C9A96A"/>`;
+    s+=`<text x="${p[0]}" y="${p[1]-6}" fill="#C9A96A" font-size="6.5" text-anchor="middle" ${SVGTXT}>${moneyK(+h[i].v||0)}</text>`;
+    s+=`<text x="${p[0]}" y="${H-7}" fill="#8A8477" font-size="9" text-anchor="middle" ${SVGTXT}>${mlabel3(h[i].m)}</text>`; });
+  return svgWrap(W,H,s);
+}
 const ACT_COLORS={"Efectivo":"#7FB77E","Ahorros":"#87B9C4","Inversiones":"#C9A96A","Retiro (401k/IRA)":"#A6C48A","Bienes raíces":"#B892C4","Vehículo":"#D9A05B","Otro activo":"#8A8477"};
 function svgDonut(){
   const byType={}; state.accounts.forEach(a=>{ if(a.kind!=="activo")return; const v=+a.value||0; if(v>0) byType[a.type]=(byType[a.type]||0)+v;});
@@ -1220,6 +1248,7 @@ function viewAnalisis(){
       ${totActivos()>0?`<span style="display:flex;flex-direction:column;text-align:right;flex:1;"><span class="muted" style="font-size:11px;">Ratio deuda / activos</span><span class="num" style="color:${ratioDeuda()>80?'var(--expense)':'var(--champagne)'};font-family:var(--serif);font-size:17px;">${ratioDeuda().toFixed(0)}%</span></span>`:""}
     </div>`:""}
 
+    ${(state.nwHistory&&state.nwHistory.length>=2)?`<h2 class="section-title">Evolución del patrimonio</h2><div class="card">${svgNW()}</div>`:""}
     <h2 class="section-title">Composición de activos</h2>
     <div class="card">${svgDonut()}</div>
 
@@ -1478,7 +1507,7 @@ async function redeemCode(raw){
   if(!code) return {ok:false,msg:"Escribe un código"};
   try{
     const {data:promo}=await sb.from("promo_codes").select("*").eq("code",code).eq("active",true).maybeSingle();
-    if(promo){
+    if(promo && (!promo.expires_at || new Date(promo.expires_at) > new Date())){
       try{ await sb.from("redemptions").insert({user_id:USER.id,code,kind:promo.kind}); }catch(e){}
       if(promo.kind==="vip"){
         state.profile.plan="premium"; state.profile.planSource="vip"; state.profile.planExpires = promo.months? isoPlusMonths(promo.months) : null; save();
@@ -1546,6 +1575,7 @@ function openAdmin(){
     <div class="field row2">
       <div><label>Tipo</label><select id="apKind" onchange="document.getElementById('apValLbl').textContent=this.value==='vip'?'Meses gratis (vacío=siempre)':'% de descuento'"><option value="vip">VIP (gratis)</option><option value="discount">Descuento %</option></select></div>
       <div><label id="apValLbl">Meses gratis (vacío=siempre)</label><input id="apVal" type="number" placeholder=""></div></div>
+    <div class="field"><label>Vence en (días, vacío = nunca)</label><input id="apExp" type="number" placeholder=""></div>
     <button class="btn block" onclick="crearPromo()">Crear código</button>
     <div id="apList" style="margin-top:14px;"><p class="muted" style="font-size:12px;">Cargando…</p></div>
     <button class="btn ghost block" style="margin-top:12px;" onclick="openPlanes()">‹ Volver</button>`);
@@ -1557,6 +1587,7 @@ async function crearPromo(){
   const val=parseInt(document.getElementById("apVal").value); const num=isNaN(val)?null:val;
   if(!code){ toast("Escribe un código"); return; }
   const row={code,kind,active:true}; if(kind==="vip") row.months=num; else row.percent=num;
+  const exp=parseInt(document.getElementById("apExp").value); if(!isNaN(exp)&&exp>0){ const d=new Date(); d.setDate(d.getDate()+exp); row.expires_at=d.toISOString(); }
   try{ const {error}=await sb.from("promo_codes").insert(row); if(error) throw error; toast("Código creado ✓"); openAdmin(); }
   catch(e){ toast((e&&e.message)||"No se pudo crear"); }
 }
@@ -1565,7 +1596,7 @@ async function listarPromos(){
     const {data}=await sb.from("promo_codes").select("*").order("created_at",{ascending:false});
     const el=document.getElementById("apList"); if(!el) return;
     if(!data||!data.length){ el.innerHTML=`<p class="muted" style="font-size:12px;">Sin códigos aún.</p>`; return; }
-    el.innerHTML=data.map(c=>`<div class="row"><div class="body"><div class="t1">${esc(c.code)}</div><div class="t2">${c.kind==="vip"?("VIP · "+(c.months?(c.months+" meses"):"para siempre")):("Descuento "+c.percent+"%")}</div></div><button class="del" onclick="borrarPromo('${esc(c.code)}')" aria-label="Eliminar">×</button></div>`).join("");
+    el.innerHTML=data.map(c=>`<div class="row"><div class="body"><div class="t1">${esc(c.code)}</div><div class="t2">${c.kind==="vip"?("VIP · "+(c.months?(c.months+" meses"):"para siempre")):("Descuento "+c.percent+"%")}${c.expires_at?" · vence "+fdate(String(c.expires_at).slice(0,10)):""}</div></div><button class="del" onclick="borrarPromo('${esc(c.code)}')" aria-label="Eliminar">×</button></div>`).join("");
   }catch(e){}
 }
 async function borrarPromo(code){ if(!confirm(tr("¿Eliminar este código?")))return; try{ await sb.from("promo_codes").delete().eq("code",code); listarPromos(); }catch(e){} }
@@ -1713,7 +1744,13 @@ async function enviarIA(preset){
   const inp=document.getElementById("iaInput");
   const q=((preset&&typeof preset==="string")?preset:(inp&&inp.value)||"").trim(); if(!q) return;
   if(inp) inp.value="";
-  IA_MSGS.push({role:"user",text:q}); IA_MSGS.push({role:"assistant",text:"…"}); pintarIA();
+  const today=todayISO(); const u=(state.profile&&state.profile.iaUsage)||{date:"",count:0};
+  if(u.date!==today){ u.date=today; u.count=0; }
+  const LIMIT=esAdmin()?300:30;
+  IA_MSGS.push({role:"user",text:q});
+  if(u.count>=LIMIT){ IA_MSGS.push({role:"assistant",text:tr("Llegaste al límite de preguntas por hoy. Vuelve mañana.")}); pintarIA(); return; }
+  u.count++; if(state.profile) state.profile.iaUsage=u; save();
+  IA_MSGS.push({role:"assistant",text:"…"}); pintarIA();
   const btn=document.getElementById("iaSend"); if(btn) btn.disabled=true;
   let ans;
   try{
@@ -1748,6 +1785,7 @@ function renderAuth(msg){
       <div class="field"><label>Contraseña</label><input id="auPass" type="password" autocomplete="${authMode==="login"?"current-password":"new-password"}" placeholder="Mínimo 6 caracteres" onkeydown="if(event.key==='Enter')authSubmit()"></div>
       ${msg?`<p style="font-size:12.5px;color:${msg.err?'var(--expense)':'var(--income)'};margin:2px 0 10px;">${esc(msg.text)}</p>`:""}
       <button class="btn block" id="auBtn" onclick="authSubmit()">${authMode==="login"?"Entrar":"Crear cuenta"}</button>
+      ${authMode==="login"?`<p style="text-align:center;margin:10px 0 0;"><a onclick="forgotPassword()" style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;">¿Olvidaste tu contraseña?</a></p>`:""}
       <p style="text-align:center;font-size:13px;margin:14px 0 0;color:var(--muted)">
         ${authMode==="login"?"¿No tienes cuenta?":"¿Ya tienes cuenta?"}
         <a onclick="toggleAuth()" style="color:var(--champagne);cursor:pointer;text-decoration:underline;">${authMode==="login"?"Crear una":"Entrar"}</a>
@@ -1782,6 +1820,29 @@ async function authSubmit(){
     renderAuth({err:true,text:txt});
   }
 }
+async function forgotPassword(){
+  const email=(document.getElementById("auEmail").value||"").trim();
+  if(!email){ renderAuth({err:true,text:"Escribe tu correo primero"}); return; }
+  try{ await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin}); renderAuth({text:"Te enviamos un correo para restablecer tu contraseña. Revisa tu bandeja (y spam)."}); }
+  catch(e){ renderAuth({err:true,text:"No se pudo enviar. Intenta de nuevo."}); }
+}
+function showResetPassword(){
+  document.body.classList.add("logged-out"); document.getElementById("modalRoot").innerHTML="";
+  document.getElementById("authGate").innerHTML=tr(`<div class="auth-card">
+    <div class="mono" style="margin:0 auto 14px;width:48px;height:48px;font-size:22px;">$</div>
+    <h1 style="font-family:var(--serif);font-weight:400;font-size:24px;color:var(--cream);text-align:center;margin:0;">Nueva contraseña</h1>
+    <p class="sub" style="text-align:center;margin:6px 0 16px;color:var(--muted);font-size:13px;">Escribe tu nueva contraseña.</p>
+    <div class="field"><label>Nueva contraseña</label><input id="rpPass" type="password" placeholder="Mínimo 6 caracteres" onkeydown="if(event.key==='Enter')guardarNuevaPass()"></div>
+    <div id="rpMsg"></div>
+    <button class="btn block" onclick="guardarNuevaPass()">Guardar contraseña</button></div>`);
+}
+async function guardarNuevaPass(){
+  const p=document.getElementById("rpPass").value||"", msg=document.getElementById("rpMsg");
+  if(p.length<6){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;margin:2px 0 8px;">${tr("La contraseña debe tener al menos 6 caracteres")}</p>`; return; }
+  try{ const {error}=await sb.auth.updateUser({password:p}); if(error) throw error;
+    const {data:{session}}=await sb.auth.getSession(); if(session){ USER=session.user; await loadCloud(); showApp(); } else { authMode="login"; showAuth(); }
+  }catch(e){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;margin:2px 0 8px;">${tr("No se pudo. Intenta de nuevo.")}</p>`; }
+}
 async function loadCloud(){
   let row=null;
   try{ const {data}=await sb.from("user_data").select("data").eq("user_id",USER.id).maybeSingle(); row=data; }catch(e){}
@@ -1811,6 +1872,7 @@ async function boot(){
     else { showAuth(); }
   }catch(e){ showAuth(); }
 }
+sb.auth.onAuthStateChange((event)=>{ if(event==="PASSWORD_RECOVERY") showResetPassword(); });
 boot();
 
 // PWA: instalable en iOS/Android + funciona offline
