@@ -226,6 +226,83 @@ const uid = () => Math.random().toString(36).slice(2,9);
 const todayISO = () => new Date().toISOString().slice(0,10);
 const curMonth = () => new Date().toISOString().slice(0,7);
 const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const MESES_EN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+/* ============ Idiomas (i18n) ============ */
+let LANG = "es";
+function setLang(l){ LANG=l; if(typeof state!=="undefined"&&state&&state.profile){ state.profile.lang=l; save(); }
+  if(document.body.classList.contains("logged-out")){ if(document.getElementById("authGate")) renderAuth(); }
+  else if(document.getElementById("app")){ render(); } }
+// Diccionario español -> inglés. Lo que no esté aquí se queda en español (no se rompe).
+const TR_EN = {
+  // Navegación
+  "Inicio":"Home","Movs.":"Money","Pagos":"Bills","Metas":"Goals","Análisis":"Insights",
+  // Inicio
+  "Me queda para gastar":"Left to spend","después de gastos, metas y pagos pendientes":"after expenses, goals and pending bills",
+  "Ingresos":"Income","Gastos":"Expenses","A metas":"To goals","Pagos pendientes":"Pending bills",
+  "Próximos pagos":"Upcoming bills","Ver todos":"See all","Ver todas":"See all","Ver todo":"See all",
+  "Todo pagado este mes. ✓":"All paid this month. ✓","Sin pagos aún.":"No bills yet.","Agregar un pago o deuda":"Add a bill or debt",
+  "Gastos por categoría":"Spending by category","Bienvenido":"Welcome",
+  "Tu app de finanzas, vacía y lista":"Your finance app, empty and ready","Agregar movimiento":"Add transaction","Cargar datos de ejemplo":"Load sample data",
+  "Ajustes y datos":"Settings & data","deuda":"debt",
+  // Movimientos
+  "Movimientos":"Transactions","Ingresos del mes":"Income this month","Gastos del mes":"Expenses this month",
+  "+ Agregar":"+ Add","Buscar…":"Search…","Todas":"All","Sin resultados con ese filtro.":"No results for that filter.",
+  "Nuevo movimiento":"New transaction","Editar movimiento":"Edit transaction","Registra un ingreso o un gasto.":"Log income or an expense.",
+  "↓ Gasto":"↓ Expense","↑ Ingreso":"↑ Income","Monto":"Amount","Categoría":"Category","Fecha":"Date","Nota (opcional)":"Note (optional)",
+  "Guardar cambios":"Save changes","+ Nueva categoría…":"+ New category…","Movimiento actualizado":"Transaction updated","Ingreso agregado":"Income added","Gasto agregado":"Expense added",
+  // Pagos
+  "Total mensual a pagar":"Total monthly bills","Pendiente este mes":"Pending this month","Deudas y préstamos":"Debts & loans","Gestionar":"Manage",
+  "Otros pagos fijos":"Other fixed bills","Pagar":"Pay","Pagado":"Paid","Pendiente":"Pending","Vence día":"Due day","saldo":"balance","interés":"interest",
+  "Sin deudas con pago mensual.":"No debts with a monthly payment.","Agregar una deuda en Patrimonio":"Add a debt in Net worth",
+  "Sin pagos fijos. Agrega renta, servicios, suscripciones…":"No fixed bills. Add rent, utilities, subscriptions…",
+  "Pago registrado":"Payment logged","Pago aplicado · saldo actualizado":"Payment applied · balance updated",
+  // Recurrente
+  "Recurrente mensual":"Monthly recurring","Nuevo recurrente":"New recurring","Editar recurrente":"Edit recurring","Un pago fijo, o un ingreso como tu sueldo.":"A fixed bill, or income like your paycheck.",
+  "↓ Pago fijo":"↓ Fixed bill","Nombre":"Name","Monto por pago":"Amount per pay","Día de pago":"Pay day","Frecuencia de pago":"Pay frequency",
+  "Semanal":"Weekly","Cada 2 semanas (bi-weekly)":"Every 2 weeks (bi-weekly)","Mensual":"Monthly","No es fijo / saltar":"Not fixed / skip",
+  // Metas
+  "Metas financieras":"Financial goals","+ Nueva":"+ New","Nueva meta":"New goal","¿Para qué estás ahorrando?":"What are you saving for?",
+  "Monto objetivo":"Target amount","Ya ahorrado (opcional)":"Already saved (optional)","Fecha objetivo (opcional)":"Target date (optional)","Crear meta":"Create goal",
+  "Te falta":"Remaining","Ahorra por semana":"Save per week","Aportar dinero":"Add money","Aportar":"Add","Meta para":"Goal for","Sin fecha objetivo":"No target date",
+  "Meta creada":"Goal created","Aporte registrado":"Contribution logged",
+  // Plan / Presupuesto
+  "Plan del mes":"Monthly plan","te sobraría si cumples el plan":"you'd have left if you follow the plan","tu plan gasta más de lo que ganas":"your plan spends more than you earn",
+  "Agrega tus ingresos para armar tu plan":"Add your income to build your plan","Ingreso planeado":"Planned income","Gasto planeado":"Planned spending",
+  "Ingresos planeados":"Planned income","Recibir":"Receive","recibido":"received","Presupuesto total":"Total budget","Gastado":"Spent","Límite por categoría":"Limit per category",
+  "Editar":"Edit","Poner":"Set","Registrar pago recibido":"Log payment received","Monto recibido":"Amount received","Fecha de pago":"Payment date","Registrar":"Log",
+  "Ingreso registrado ✓":"Income logged ✓","Presupuesto:":"Budget:","Máximo que quieres gastar al mes en esta categoría.":"Max you want to spend per month in this category.","Límite mensual":"Monthly limit","Quitar":"Remove",
+  // Análisis / Patrimonio
+  "Ingresos vs Gastos":"Income vs Expenses","Flujo neto mensual":"Monthly net flow","Ahorro mensual (a metas)":"Monthly savings (to goals)","Sobra":"Surplus","Falta":"Shortfall","Aportes":"Contributions",
+  "Patrimonio neto":"Net worth","Lo que vales hoy":"What you're worth today","Todo lo que tienes menos todo lo que debes":"Everything you own minus everything you owe",
+  "Activos · tienes":"Assets · you own","Deudas · debes":"Debts · you owe","Intereses de deudas":"Debt interest","Ratio deuda / activos":"Debt-to-asset ratio",
+  "Composición de activos":"Asset breakdown","Activos":"Assets","Deudas":"Debts","+ Agregar":"+ Add",
+  "Agrega efectivo, ahorros, inversiones, bienes raíces, vehículo…":"Add cash, savings, investments, real estate, vehicle…","Agrega tarjetas, préstamos, auto loan, hipoteca…":"Add cards, loans, auto loan, mortgage…",
+  "Agregar cuenta":"Add account","Editar cuenta":"Edit account","Pon los detalles reales — la app calcula tu patrimonio e intereses.":"Enter the real details — the app computes your net worth and interest.",
+  "Valor actual":"Current value","Saldo que debes":"Balance you owe","Límite de crédito":"Credit limit","Pago mensual":"Monthly payment","Día de pago (1–31)":"Pay day (1–31)",
+  "Activos (lo que tienes)":"Assets (what you own)","Deudas (lo que debes)":"Debts (what you owe)","Guardado":"Saved",
+  // Cuentas tipos
+  "Efectivo":"Cash","Ahorros":"Savings","Inversiones":"Investments","Retiro (401k/IRA)":"Retirement (401k/IRA)","Bienes raíces":"Real estate","Vehículo":"Vehicle","Otro activo":"Other asset",
+  "Tarjeta de crédito":"Credit card","Préstamo de auto":"Auto loan","Préstamo estudiantil":"Student loan","Préstamo personal":"Personal loan","Hipoteca":"Mortgage","Otra deuda":"Other debt",
+  // Categorías por defecto
+  "Salario":"Salary","Spark / Delivery":"Spark / Delivery","Otros ingresos":"Other income","Renta":"Rent","Comida":"Food","Transporte":"Transport","Servicios":"Utilities","Entretenimiento":"Entertainment","Salud":"Health","Deudas":"Debts","Otros gastos":"Other expenses",
+  // Perfil / Ajustes
+  "Tu perfil":"Your profile","Mi perfil":"My profile","Tu nombre":"Your name","Correo":"Email","Moneda":"Currency","Recordatorios de pagos":"Bill reminders","Miembro desde":"Member since",
+  "Perfil actualizado":"Profile updated","Cerrar sesión":"Log out","Gestionar categorías":"Manage categories","Exportar mis datos (respaldo)":"Export my data (backup)","Borrar todos los datos":"Delete all data","Cerrar":"Close",
+  "Categorías":"Categories","Personaliza tus categorías de gastos e ingresos.":"Customize your expense and income categories.","+ Nueva categoría de gasto":"+ New expense category","+ Nueva categoría de ingreso":"+ New income category","en uso":"in use","Listo":"Done",
+  // Onboarding
+  "Bienvenido a Aurova":"Welcome to Aurova","Personalicémosla en 30 segundos.":"Let's set it up in 30 seconds.","¿Cómo te llamas?":"What's your name?","Tu nombre":"Your name","Continuar":"Continue","‹ Atrás":"‹ Back",
+  "¿Qué te trae a Aurova?":"What brings you to Aurova?","Tu meta principal.":"Your main goal.","Ahorrar / fondo de emergencia":"Save / emergency fund","Salir de deudas":"Get out of debt","Entender mis gastos":"Understand my spending","Presupuestar mejor":"Budget better","Invertir / crecer patrimonio":"Invest / grow net worth",
+  "¿En qué moneda manejas tu dinero?":"What currency do you use?","Puedes cambiarla después.":"You can change it later.","¿Cada cuánto te pagan?":"How often are you paid?","Para armar tu plan de ingresos.":"To build your income plan.",
+  "Recordatorios":"Reminders","Te avisamos dentro de la app cuando tengas pagos próximos.":"We'll remind you in-app when bills are due.","Activar recordatorios de pagos":"Turn on bill reminders","Explorar con datos de ejemplo":"Explore with sample data","Empezar de cero":"Start fresh",
+  // Auth
+  "Entra a tu cuenta":"Sign in to your account","Crea tu cuenta para empezar":"Create your account to start","Contraseña":"Password","Entrar":"Sign in","Crear cuenta":"Create account","¿No tienes cuenta?":"No account yet?","¿Ya tienes cuenta?":"Already have an account?","Crear una":"Create one",
+  "Escribe tu correo y contraseña":"Enter your email and password","La contraseña debe tener al menos 6 caracteres":"Password must be at least 6 characters","Un momento…":"One moment…","Correo o contraseña incorrectos":"Wrong email or password","Ese correo ya tiene cuenta — mejor entra":"That email already has an account — sign in",
+  // Comunes
+  "Cancelar":"Cancel","Guardar":"Save","Eliminar":"Delete","Agregar":"Add","Continuar":"Continue","hoy":"today","vence":"due","esperado/mes":"expected/mo"
+};
+const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
+function tr(html){ if(LANG!=="en"||typeof html!=="string") return html; let out=html; for(const [es,en] of TR_ORDER){ if(out.indexOf(es)>=0) out=out.split(es).join(en); } return out; }
 
 let state = seed();
 let VIEW = "inicio";
@@ -251,6 +328,7 @@ function normalizeState(s){
   if(s.profile.goal==null) s.profile.goal="";
   if(s.profile.payFreq==null) s.profile.payFreq="";
   if(s.profile.reminders==null) s.profile.reminders=true;
+  if(s.profile.lang==null) s.profile.lang="es";
   if(s.profile.createdAt==null) s.profile.createdAt=todayISO();
   // migración al modelo final: cada cuenta un solo lado (kind + value)
   const norm=[];
@@ -289,7 +367,7 @@ function seed(){
     cat("Servicios","gasto","#B892C4"), cat("Entretenimiento","gasto","#87B9C4"), cat("Salud","gasto","#7FB77E"),
     cat("Deudas","gasto","#D98E80"), cat("Otros gastos","gasto","#8A8477")
   ];
-  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], profile:{name:"",goal:"",currency:"USD",payFreq:"",reminders:true,createdAt:todayISO()}, seeded:false };
+  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], profile:{name:"",goal:"",currency:"USD",payFreq:"",reminders:true,lang:"es",createdAt:todayISO()}, seeded:false };
 }
 
 /* ============ Helpers de datos ============ */
@@ -323,17 +401,17 @@ function render(){
   const el = document.getElementById("app");
   el.innerHTML = "";
   const v = document.createElement("div"); v.className="view";
-  v.innerHTML = ({inicio:viewInicio, movimientos:viewMovimientos, pagos:viewPagos, metas:viewMetas, presupuesto:viewPresupuesto, analisis:viewAnalisis})[VIEW]();
+  v.innerHTML = tr(({inicio:viewInicio, movimientos:viewMovimientos, pagos:viewPagos, metas:viewMetas, presupuesto:viewPresupuesto, analisis:viewAnalisis})[VIEW]());
   el.appendChild(v);
 }
-function mesLabel(m){ const [y,mo]=m.split("-"); return MESES[+mo-1]+" "+y; }
+function mesLabel(m){ const [y,mo]=m.split("-"); const arr=LANG==="en"?MESES_EN:MESES; return arr[+mo-1]+" "+y; }
 function shiftMonth(d){ const dt=new Date(SEL+"-01T00:00"); dt.setMonth(dt.getMonth()+d); SEL=dt.toISOString().slice(0,7); render(); }
 function go(v){ VIEW=v; window.scrollTo(0,0); render(); }
 
 const TABS=[["inicio","◈","Inicio"],["movimientos","≡","Movs."],["pagos","◷","Pagos"],["metas","✦","Metas"],["presupuesto","▦","Plan"],["analisis","▤","Análisis"]];
 function renderTabs(){
-  document.getElementById("tabs").innerHTML = TABS.map(([id,ic,lbl])=>
-    `<button class="tab ${VIEW===id?'active':''}" onclick="go('${id}')"><span class="ti">${ic}</span><span class="tl">${lbl}</span></button>`).join("");
+  document.getElementById("tabs").innerHTML = tr(TABS.map(([id,ic,lbl])=>
+    `<button class="tab ${VIEW===id?'active':''}" onclick="go('${id}')"><span class="ti">${ic}</span><span class="tl">${lbl}</span></button>`).join(""));
 }
 
 /* ============ VISTA: INICIO ============ */
@@ -675,7 +753,7 @@ function delRec(id){ if(!confirm("¿Eliminar este pago recurrente?"))return; sta
 function delGoal(id){ if(!confirm("¿Eliminar esta meta?"))return; state.goals=state.goals.filter(g=>g.id!==id); save(); render(); }
 
 /* ============ Modales ============ */
-function modal(html){ document.getElementById("modalRoot").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">${html}</div></div>`; }
+function modal(html){ document.getElementById("modalRoot").innerHTML = tr(`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">${html}</div></div>`); }
 function closeModal(){ document.getElementById("modalRoot").innerHTML=""; }
 
 let txnType="gasto", editTxnId=null;
@@ -1141,9 +1219,9 @@ function delAccount(id){ if(!confirm("¿Eliminar esta cuenta?"))return; state.ac
 
 /* ============ util ============ */
 function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-function fdate(iso){ if(!iso)return""; const [y,m,d]=iso.split("-"); return `${+d} ${MESES[+m-1].slice(0,3)}`; }
+function fdate(iso){ if(!iso)return""; const [y,m,d]=iso.split("-"); const mn=(LANG==="en"?MESES_EN:MESES)[+m-1].slice(0,3); return LANG==="en"?`${mn} ${+d}`:`${+d} ${mn}`; }
 let toastT;
-function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),1800); }
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=tr(msg); t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),1800); }
 
 /* ============ Onboarding (crear perfil) ============ */
 const ONB_GOALS=[["ahorrar","💰","Ahorrar / fondo de emergencia"],["deudas","💳","Salir de deudas"],["gastos","🔍","Entender mis gastos"],["presupuestar","📊","Presupuestar mejor"],["invertir","📈","Invertir / crecer patrimonio"]];
@@ -1160,7 +1238,8 @@ function maybeWelcome(){
 function onbDots(){ let d=""; for(let i=0;i<ONB_TOTAL;i++){ d+=`<span style="width:7px;height:7px;border-radius:50%;background:${i===ONB_STEP?'var(--champagne)':'var(--rule-strong)'};display:inline-block;"></span>`; } return `<div style="display:flex;gap:6px;justify-content:center;margin-bottom:18px;">${d}</div>`; }
 function onbShell(inner){
   const back = ONB_STEP>0?`<button class="linkbtn" onclick="onbBack()" style="position:absolute;left:0;top:0;">‹ Atrás</button>`:"";
-  modal(`<div style="position:relative;padding-top:6px;">${back}${onbDots()}${inner}</div>`);
+  const lang = `<span style="position:absolute;right:0;top:0;font-size:12px;"><a onclick="setLang('es');renderOnb()" style="cursor:pointer;color:${LANG==='es'?'var(--champagne)':'var(--muted)'}">ES</a><span style="color:var(--muted)"> · </span><a onclick="setLang('en');renderOnb()" style="cursor:pointer;color:${LANG==='en'?'var(--champagne)':'var(--muted)'}">EN</a></span>`;
+  modal(`<div style="position:relative;padding-top:6px;">${back}${lang}${onbDots()}${inner}</div>`);
 }
 function onbBack(){ if(ONB_STEP>0){ ONB_STEP--; renderOnb(); } }
 function onbNext(){ ONB_STEP++; renderOnb(); }
@@ -1247,6 +1326,7 @@ function openPerfil(){
     <div class="field"><label>Tu nombre</label><input id="pfName" type="text" value="${esc(p.name||"")}" placeholder="Ej. Jesús"></div>
     <div class="field"><label>Correo</label><input type="email" value="${esc(email)}" disabled style="opacity:.55;cursor:not-allowed;"></div>
     <div class="field"><label>Moneda</label><select id="pfCur">${ONB_CUR.map(([k,l])=>`<option value="${k}" ${(p.currency||"USD")===k?"selected":""}>${l}</option>`).join("")}</select></div>
+    <div class="field"><label>Idioma / Language</label><select id="pfLang"><option value="es" ${(p.lang||"es")==="es"?"selected":""}>Español</option><option value="en" ${p.lang==="en"?"selected":""}>English</option></select></div>
     <label style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--rule-strong);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer;"><span style="font-size:14px;">Recordatorios de pagos</span><input id="pfRem" type="checkbox" ${p.reminders?"checked":""} style="width:20px;height:20px;accent-color:var(--champagne);"></label>
     <p class="muted" style="font-size:12px;margin:2px 0 4px;">Miembro desde ${p.createdAt?fdate(p.createdAt):"hoy"}.</p>
     <div class="sheet-actions">
@@ -1258,6 +1338,7 @@ function openPerfil(){
 function savePerfil(){ state.profile=state.profile||{}; state.profile.name=document.getElementById("pfName").value.trim();
   const c=document.getElementById("pfCur"); if(c) state.profile.currency=c.value;
   const r=document.getElementById("pfRem"); if(r) state.profile.reminders=r.checked;
+  const lg=document.getElementById("pfLang"); if(lg){ state.profile.lang=lg.value; LANG=lg.value; }
   save(); closeModal(); toast("Perfil actualizado"); render(); }
 
 /* ============ Autenticación + nube (Supabase) ============ */
@@ -1269,8 +1350,9 @@ let USER=null, authMode="login";
 function showAuth(){ document.body.classList.add("logged-out"); document.getElementById("modalRoot").innerHTML=""; renderAuth(); }
 function showApp(){ document.body.classList.remove("logged-out"); render(); maybeWelcome(); }
 function renderAuth(msg){
-  document.getElementById("authGate").innerHTML=`
+  document.getElementById("authGate").innerHTML=tr(`
     <div class="auth-card">
+      <div style="text-align:right;font-size:12px;margin-bottom:2px;"><a onclick="setLang('es')" style="cursor:pointer;color:${LANG==='es'?'var(--champagne)':'var(--muted)'}">ES</a><span style="color:var(--muted)"> · </span><a onclick="setLang('en')" style="cursor:pointer;color:${LANG==='en'?'var(--champagne)':'var(--muted)'}">EN</a></div>
       <div class="mono" style="margin:0 auto 14px;width:48px;height:48px;font-size:22px;">$</div>
       <h1 style="font-family:var(--serif);font-weight:400;font-size:26px;color:var(--cream);text-align:center;margin:0;">Aurova</h1>
       <p class="sub" style="text-align:center;margin:6px 0 18px;color:var(--muted);font-size:13px;">${authMode==="login"?"Entra a tu cuenta":"Crea tu cuenta para empezar"}</p>
@@ -1283,7 +1365,7 @@ function renderAuth(msg){
         <a onclick="toggleAuth()" style="color:var(--champagne);cursor:pointer;text-decoration:underline;">${authMode==="login"?"Crear una":"Entrar"}</a>
       </p>
       <p class="muted" style="text-align:center;font-size:11px;margin-top:18px;">Powered by Quantum Services</p>
-    </div>`;
+    </div>`);
 }
 function toggleAuth(){ authMode = authMode==="login"?"signup":"login"; renderAuth(); }
 async function authSubmit(){
@@ -1291,7 +1373,7 @@ async function authSubmit(){
   const pass=document.getElementById("auPass").value||"";
   if(!email||!pass){ renderAuth({err:true,text:"Escribe tu correo y contraseña"}); return; }
   if(pass.length<6){ renderAuth({err:true,text:"La contraseña debe tener al menos 6 caracteres"}); return; }
-  const btn=document.getElementById("auBtn"); btn.textContent="Un momento…"; btn.disabled=true;
+  const btn=document.getElementById("auBtn"); btn.textContent=tr("Un momento…"); btn.disabled=true;
   try{
     if(authMode==="signup"){
       const {data,error}=await sb.auth.signUp({email,password:pass});
@@ -1316,8 +1398,9 @@ async function loadCloud(){
   let row=null;
   try{ const {data}=await sb.from("user_data").select("data").eq("user_id",USER.id).maybeSingle(); row=data; }catch(e){}
   if(row && row.data && Object.keys(row.data).length){ state=normalizeState(row.data); }
-  else { state=seed(); localStorage.removeItem("mifin_welcomed"); await pushCloud(); }
+  else { state=seed(); state.profile.lang=(navigator.language||"es").toLowerCase().startsWith("en")?"en":"es"; localStorage.removeItem("mifin_welcomed"); await pushCloud(); }
   localStorage.setItem(KEY, JSON.stringify(state));
+  LANG=(state.profile&&state.profile.lang)||"es";
   SEL=curMonth(); VIEW="inicio";
 }
 async function logout(){ try{ await sb.auth.signOut(); }catch(e){} USER=null; state=seed(); localStorage.removeItem(KEY); showAuth(); }
