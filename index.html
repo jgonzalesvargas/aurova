@@ -187,6 +187,7 @@
 <body class="logged-out">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 
 <div id="authGate"><div style="color:var(--muted)">Cargando…</div></div>
 
@@ -380,7 +381,12 @@ const TR_EN = {
   "No se pudo enviar. Intenta de nuevo.":"Couldn't send. Try again.","Nueva contraseña":"New password","Escribe tu nueva contraseña.":"Enter your new password.","Guardar contraseña":"Save password","No se pudo. Intenta de nuevo.":"Couldn't do it. Try again.",
   // Panel de negocio (admin)
   "Panel de negocio":"Business panel","Panel de admin":"Admin panel","Miembros":"Members","Gestionar códigos":"Manage codes","Solo admin":"Admin only",
-  "Próximamente — se activa al conectar Stripe.":"Coming soon — activates when Stripe is connected.","Aún no hay miembros registrados.":"No members registered yet.","(sin nombre)":"(no name)","No se pudo cargar.":"Couldn't load."
+  "Próximamente — se activa al conectar Stripe.":"Coming soon — activates when Stripe is connected.","Aún no hay miembros registrados.":"No members registered yet.","(sin nombre)":"(no name)","No se pudo cargar.":"Couldn't load.",
+  // Sync bancaria (Plaid)
+  "Conectar banco":"Connect bank","Conectar tu banco":"Connecting your bank","Trae tus movimientos automáticamente. Seguro — nunca vemos tu contraseña.":"Bring in your transactions automatically. Secure — we never see your password.",
+  "＋ Conectar un banco":"＋ Connect a bank","Sincronizar ahora":"Sync now","La conexión bancaria aún no está configurada.":"Bank connection isn't set up yet.","Ningún banco conectado aún.":"No bank connected yet.",
+  "Abriendo…":"Opening…","No se pudo conectar.":"Couldn't connect.","No se pudo conectar":"Couldn't connect","No se pudo cargar Plaid.":"Couldn't load Plaid.","Banco conectado ✓":"Bank connected ✓",
+  "¿Desconectar este banco?":"Disconnect this bank?","Sincronizando…":"Syncing…","No se pudo sincronizar.":"Couldn't sync.","movimientos nuevos importados":"new transactions imported"
 };
 const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
 function tr(html){ if(LANG!=="en"||typeof html!=="string") return html; let out=html; for(const [es,en] of TR_ORDER){ if(out.indexOf(es)>=0) out=out.split(es).join(en); } return out; }
@@ -1474,6 +1480,7 @@ function openPerfil(){
     ${esAdmin()?`<button class="btn block" style="margin-top:8px;" onclick="openAdminDash()">⚙️ Panel de admin</button>`:""}
     <button class="btn ghost block" style="margin-top:8px;" onclick="openParejas()">👫 ${MODE==="household"?"Cuenta conjunta activa":"Cuenta de parejas"}</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openAsistente()">🤖 Asistente IA${planActivo()?"":" ✦"}</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="openBancos()">🏦 Conectar banco${planActivo()?"":" ✦"}</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openAjustes()">⚙️ Ajustes y datos</button>
     <button class="btn ghost block" style="margin-top:8px;color:var(--expense);border-color:var(--expense);" onclick="logout()">Cerrar sesión</button>`);
 }
@@ -1800,6 +1807,65 @@ async function enviarIA(preset){
   IA_MSGS[IA_MSGS.length-1].text=ans;
   const b2=document.getElementById("iaSend"); if(b2) b2.disabled=false;
   pintarIA();
+}
+
+/* ============ Sincronización bancaria (Plaid) ============ */
+async function plaidFn(body){ const {data,error}=await sb.functions.invoke("plaid",{body}); if(error) throw error; return data; }
+function openBancos(){
+  if(!planActivo()){ openUpsell("Conectar tu banco"); return; }
+  modal(`<button class="linkbtn" onclick="closeModal()" style="display:inline-block;margin:0 0 8px;">‹ Volver</button>
+    <div style="text-align:center;"><div style="font-size:28px">🏦</div><h3 style="font-family:var(--serif);font-size:21px;color:var(--cream);margin:4px 0;">Conectar banco</h3><div class="sub" style="font-size:12.5px;">Trae tus movimientos automáticamente. Seguro — nunca vemos tu contraseña.</div></div>
+    <button class="btn block" style="margin-top:12px;" onclick="conectarBanco()">＋ Conectar un banco</button>
+    <div id="bkList" class="card" style="margin-top:12px;"><p class="muted" style="font-size:12px;">Cargando…</p></div>
+    <button class="btn ghost block" style="margin-top:10px;" onclick="sincronizarBancos()">Sincronizar ahora</button>
+    <div id="bkMsg"></div>`);
+  listarBancos();
+}
+async function listarBancos(){
+  const el=document.getElementById("bkList"); if(!el) return;
+  try{ const d=await plaidFn({action:"list"});
+    if(d.error){ el.innerHTML=`<p class="muted" style="font-size:12px;">${d.error==="no_keys"?tr("La conexión bancaria aún no está configurada."):tr("No se pudo cargar.")}</p>`; return; }
+    const items=d.items||[];
+    if(!items.length){ el.innerHTML=`<p class="muted" style="font-size:12px;">${tr("Ningún banco conectado aún.")}</p>`; return; }
+    el.innerHTML=items.map(i=>`<div class="row"><div class="ic">🏦</div><div class="body"><div class="t1">${esc(i.institution||"Banco")}</div></div><button class="del" onclick="quitarBanco('${i.id}')" aria-label="Quitar">×</button></div>`).join("");
+  }catch(e){ el.innerHTML=`<p class="muted" style="font-size:12px;">${tr("No se pudo cargar.")}</p>`; }
+}
+async function conectarBanco(){
+  const msg=document.getElementById("bkMsg"); if(msg) msg.innerHTML=`<p class="muted" style="font-size:12px;margin-top:8px;">${tr("Abriendo…")}</p>`;
+  try{
+    const d=await plaidFn({action:"link_token",lang:LANG});
+    if(d.error){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;margin-top:8px;">${d.error==="no_keys"?tr("La conexión bancaria aún no está configurada."):tr("No se pudo conectar.")}</p>`; return; }
+    if(!window.Plaid){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;">${tr("No se pudo cargar Plaid.")}</p>`; return; }
+    if(msg) msg.innerHTML="";
+    const handler=window.Plaid.create({ token:d.link_token, onSuccess: async (pt,meta)=>{
+      const inst=(meta&&meta.institution&&meta.institution.name)||"";
+      try{ const ex=await plaidFn({action:"exchange",public_token:pt,institution:inst}); if(ex.error) throw new Error(ex.error);
+        toast(tr("Banco conectado ✓")); listarBancos(); sincronizarBancos();
+      }catch(e){ toast(tr("No se pudo conectar")); }
+    }, onExit: ()=>{} });
+    handler.open();
+  }catch(e){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;">${tr("No se pudo conectar.")}</p>`; }
+}
+async function quitarBanco(id){ if(!confirm(tr("¿Desconectar este banco?")))return; try{ await plaidFn({action:"remove",id}); listarBancos(); }catch(e){} }
+async function sincronizarBancos(){
+  const msg=document.getElementById("bkMsg"); if(msg) msg.innerHTML=`<p class="muted" style="font-size:12px;margin-top:8px;">${tr("Sincronizando…")}</p>`;
+  try{
+    const d=await plaidFn({action:"sync"});
+    if(d.error){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;">${d.error==="no_keys"?tr("La conexión bancaria aún no está configurada."):tr("No se pudo sincronizar.")}</p>`; return; }
+    const txns=d.transactions||[]; let nuevos=0;
+    const existentes=new Set(state.transactions.map(t=>t.id));
+    const gCat=()=>{ const c=state.categories.find(x=>x.kind==="gasto"&&x.name==="Otros gastos"); return c?c.id:(gastoCats()[0]&&gastoCats()[0].id); };
+    const iCat=()=>{ const c=state.categories.find(x=>x.kind==="ingreso"&&x.name==="Otros ingresos"); return c?c.id:(ingresoCats()[0]&&ingresoCats()[0].id); };
+    txns.forEach(t=>{
+      if(existentes.has(t.id)) return;
+      const gasto=(+t.amount||0)>=0;
+      state.transactions.push({ id:t.id, type:gasto?"gasto":"ingreso", amount:Math.abs(+t.amount||0), categoryId:gasto?gCat():iCat(), date:t.date, note:(t.name||"")+(t.institution?" · "+t.institution:""), source:"plaid" });
+      nuevos++;
+    });
+    if(nuevos) save();
+    if(msg) msg.innerHTML=`<p style="color:var(--income);font-size:12.5px;margin-top:8px;">${nuevos} ${tr("movimientos nuevos importados")}</p>`;
+    render();
+  }catch(e){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;">${tr("No se pudo sincronizar.")}</p>`; }
 }
 
 /* ============ Autenticación + nube (Supabase) ============ */
