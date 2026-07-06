@@ -1576,6 +1576,7 @@ function compartirRef(){
 }
 function openAdmin(){
   modal(`
+    <button class="linkbtn" onclick="openAdminDash()" style="display:inline-block;margin:0 0 8px;">‹ Volver</button>
     <div style="text-align:center;"><div class="eyebrow">Admin</div><h3 style="font-family:var(--serif);font-size:22px;color:var(--cream);">Códigos</h3></div>
     <div class="field"><label>Nuevo código</label><input id="apCode" type="text" placeholder="NUEVOCODIGO" style="text-transform:uppercase;"></div>
     <div class="field row2">
@@ -1614,7 +1615,8 @@ async function syncMember(){
 }
 async function openAdminDash(){
   if(!esAdmin()){ toast("Solo admin"); return; }
-  modal(`<div style="text-align:center;"><div class="eyebrow">Admin</div><h3 style="font-family:var(--serif);font-size:22px;color:var(--cream);">Panel de negocio</h3></div>
+  modal(`<button class="linkbtn" onclick="openPlanes()" style="display:inline-block;margin:0 0 8px;">‹ Volver</button>
+    <div style="text-align:center;"><div class="eyebrow">Admin</div><h3 style="font-family:var(--serif);font-size:22px;color:var(--cream);">Panel de negocio</h3></div>
     <div id="adStats" class="grid2" style="margin-top:12px;"></div>
     <div class="head-row"><h3 class="section-title" style="font-size:16px;margin:0">Miembros</h3></div>
     <div id="adMembers" class="card" style="max-height:44vh;overflow:auto;"><p class="muted" style="font-size:12px;">Cargando…</p></div>
