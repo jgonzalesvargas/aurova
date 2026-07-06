@@ -1586,8 +1586,7 @@ function openAdmin(){
       <div><label id="apValLbl">Meses gratis (vacío=siempre)</label><input id="apVal" type="number" placeholder=""></div></div>
     <div class="field"><label>Vence en (días, vacío = nunca)</label><input id="apExp" type="number" placeholder=""></div>
     <button class="btn block" onclick="crearPromo()">Crear código</button>
-    <div id="apList" style="margin-top:14px;"><p class="muted" style="font-size:12px;">Cargando…</p></div>
-    <button class="btn ghost block" style="margin-top:12px;" onclick="openPlanes()">‹ Volver</button>`);
+    <div id="apList" style="margin-top:14px;"><p class="muted" style="font-size:12px;">Cargando…</p></div>`);
   listarPromos();
 }
 async function crearPromo(){
@@ -1623,8 +1622,7 @@ async function openAdminDash(){
     <div class="head-row"><h3 class="section-title" style="font-size:16px;margin:0">Miembros</h3></div>
     <div id="adMembers" class="card"><p class="muted" style="font-size:12px;">Cargando…</p></div>
     <div class="card" style="margin-top:12px;border-left:3px solid var(--teal);"><div class="eyebrow">Ingresos</div><p class="muted" style="font-size:12.5px;margin:6px 0 0;">Próximamente — se activa al conectar Stripe.</p></div>
-    <button class="btn ghost block" style="margin-top:12px;" onclick="openAdmin()">Gestionar códigos</button>
-    <button class="btn ghost block" style="margin-top:8px;" onclick="openPlanes()">‹ Volver</button>`);
+    <button class="btn ghost block" style="margin-top:12px;" onclick="openAdmin()">Gestionar códigos</button>`);
   cargarMiembros();
 }
 async function cargarMiembros(){
