@@ -359,6 +359,9 @@ const TR_EN = {
   "Crear cuenta conjunta":"Create joint account","Unirme con un código":"Join with a code","Código de tu pareja":"Your partner's code","Unirme":"Join","— o —":"— or —",
   "Cuenta conjunta creada ✓":"Joint account created ✓","¡Te uniste! 🎉":"You joined! 🎉","Código no válido":"Invalid code","Escribe el código":"Enter the code","No se pudo unir (¿ya eres miembro?)":"Couldn't join (already a member?)",
   "¿Salir de la cuenta conjunta? Volverás a tus finanzas personales.":"Leave the joint account? You'll go back to your personal finances.","Volviste a tus finanzas personales":"Back to your personal finances",
+  "Separar: cada quien se queda con una copia de estas finanzas. Salir: vuelves a tus finanzas de antes de la cuenta conjunta.":"Separate: each keeps a copy of these finances. Leave: you go back to your finances from before the joint account.",
+  "Separar cuentas (quedarme con una copia)":"Separate accounts (keep a copy)","Salir (volver a mis finanzas anteriores)":"Leave (back to my previous finances)",
+  "¿Separar las cuentas? Te quedas con una copia de estas finanzas como tuyas, y sales de la cuenta conjunta.":"Separate the accounts? You'll keep a copy of these finances as your own and leave the joint account.","Cuentas separadas — te quedaste con una copia":"Accounts separated — you kept a copy",
   // Asistente IA
   "Asistente Aurova":"Aurova Assistant","Pregúntame sobre tu dinero.":"Ask me about your money.","Pregúntame sobre tu dinero":"Ask me about your money","Asistente IA":"AI Assistant","El asistente IA":"The AI assistant","Enviar":"Send","Ej. ¿En qué gasto de más?":"e.g. Where am I overspending?",
   "¿En qué estoy gastando de más?":"Where am I overspending?","¿Cómo puedo ahorrar más?":"How can I save more?","Dame un consejo para mis deudas":"Give me advice on my debts","¿Voy bien este mes?":"Am I doing OK this month?",
@@ -1613,7 +1616,9 @@ function openParejas(){
   if(MODE==="household" && HH){
     modal(`<div style="text-align:center;"><div style="font-size:30px">👫</div><h3 style="font-family:var(--serif);font-size:22px;color:var(--cream);margin:6px 0;">Cuenta conjunta activa</h3><div class="sub" style="margin-bottom:14px;">Tú y tu pareja comparten estas finanzas. Los cambios de cualquiera se ven en ambos al recargar.</div></div>
       <div id="hhCard" class="card" style="text-align:center;"><div class="muted" style="font-size:12px;">Código para invitar a tu pareja</div><div class="num" style="font-family:var(--serif);font-size:22px;color:var(--champagne);margin-top:4px;">…</div></div>
-      <button class="btn ghost block" style="margin-top:14px;color:var(--expense);border-color:var(--expense);" onclick="salirParejas()">Salir de la cuenta conjunta</button>
+      <p class="muted" style="font-size:11.5px;margin:14px 2px 6px;">Separar: cada quien se queda con una copia de estas finanzas. Salir: vuelves a tus finanzas de antes de la cuenta conjunta.</p>
+      <button class="btn block" onclick="separarParejas()">Separar cuentas (quedarme con una copia)</button>
+      <button class="btn ghost block" style="margin-top:8px;color:var(--expense);border-color:var(--expense);" onclick="salirParejas()">Salir (volver a mis finanzas anteriores)</button>
       <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal()">Cerrar</button>`);
     sb.from("households").select("join_code").eq("id",HH).maybeSingle().then(({data})=>{ const el=document.getElementById("hhCard"); if(el&&data) el.querySelector(".num").textContent=data.join_code; }).catch(()=>{});
   } else {
@@ -1654,6 +1659,15 @@ async function salirParejas(){
   state=Object.assign({profile:state.profile}, PERSONAL||financesOf(seed()));
   state.profile.household=null; MODE="personal"; HH=null;
   save(); toast("Volviste a tus finanzas personales"); openParejas(); render();
+}
+async function separarParejas(){
+  if(!confirm(tr("¿Separar las cuentas? Te quedas con una copia de estas finanzas como tuyas, y sales de la cuenta conjunta.")))return;
+  const copia = financesOf(state);
+  try{ await sb.from("household_members").delete().eq("household_id",HH).eq("user_id",USER.id); }catch(e){}
+  PERSONAL = copia;
+  state = Object.assign({profile:state.profile}, copia);
+  state.profile.household=null; MODE="personal"; HH=null;
+  save(); toast("Cuentas separadas — te quedaste con una copia"); openParejas(); render();
 }
 
 /* ============ Asistente IA ============ */
