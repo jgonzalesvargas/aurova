@@ -1469,6 +1469,7 @@ function openPerfil(){
       <button class="btn" onclick="savePerfil()">Guardar</button>
     </div>
     <button class="btn ghost block" style="margin-top:10px;border-color:var(--champagne);color:var(--champagne);" onclick="openPlanes()">✦ ${planActivo()?"Premium activo — administrar":"Ver planes y códigos"}</button>
+    ${esAdmin()?`<button class="btn block" style="margin-top:8px;" onclick="openAdminDash()">⚙️ Panel de admin</button>`:""}
     <button class="btn ghost block" style="margin-top:8px;" onclick="openParejas()">👫 ${MODE==="household"?"Cuenta conjunta activa":"Cuenta de parejas"}</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openAsistente()">🤖 Asistente IA${planActivo()?"":" ✦"}</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openAjustes()">⚙️ Ajustes y datos</button>
