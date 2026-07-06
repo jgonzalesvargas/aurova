@@ -129,6 +129,8 @@
   .tab.active{color:var(--champagne);}
   .tab.active .tl{color:var(--cream);}
   .tab:hover{color:var(--cream-dim);}
+  /* Con un modal abierto, ocultar la barra de abajo y el botón + para que no roben el toque de los botones del modal */
+  body.modal-open nav.tabs, body.modal-open .fab{display:none !important;}
 
   /* ---- Modal ---- */
   .overlay{position:fixed;inset:0;z-index:50;background:rgba(8,10,13,.6);backdrop-filter:blur(3px);
@@ -868,8 +870,8 @@ function delRec(id){ if(!confirm(tr("¿Eliminar este pago recurrente?")))return;
 function delGoal(id){ if(!confirm(tr("¿Eliminar esta meta?")))return; state.goals=state.goals.filter(g=>g.id!==id); save(); render(); }
 
 /* ============ Modales ============ */
-function modal(html){ document.getElementById("modalRoot").innerHTML = tr(`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">${html}</div></div>`); }
-function closeModal(){ document.getElementById("modalRoot").innerHTML=""; }
+function modal(html){ document.getElementById("modalRoot").innerHTML = tr(`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">${html}</div></div>`); document.body.classList.add("modal-open"); }
+function closeModal(){ document.getElementById("modalRoot").innerHTML=""; document.body.classList.remove("modal-open"); }
 
 let txnType="gasto", editTxnId=null;
 function openTxn(id){
