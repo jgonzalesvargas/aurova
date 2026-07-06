@@ -1441,6 +1441,7 @@ const ADMIN_EMAIL = "jesusgonzales0703@gmail.com";
 let REF_COUNT = 0;
 function esAdmin(){ return USER && USER.email && USER.email.toLowerCase()===ADMIN_EMAIL; }
 function planActivo(){
+  if(esAdmin()) return true;               // el dueño siempre tiene acceso completo
   const p=state.profile||{};
   if(p.plan==="premium"){ if(!p.planExpires) return true; if(new Date(p.planExpires) > new Date()) return true; }
   if(REF_COUNT>0) return true;
