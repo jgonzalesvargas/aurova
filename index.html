@@ -1616,7 +1616,7 @@ async function syncMember(){
 }
 async function openAdminDash(){
   if(!esAdmin()){ toast("Solo admin"); return; }
-  modal(`<button class="linkbtn" onclick="openPlanes()" style="display:inline-block;margin:0 0 8px;">‹ Volver</button>
+  modal(`<button class="linkbtn" onclick="closeModal()" style="display:inline-block;margin:0 0 8px;">‹ Volver</button>
     <div style="text-align:center;"><div class="eyebrow">Admin</div><h3 style="font-family:var(--serif);font-size:22px;color:var(--cream);">Panel de negocio</h3></div>
     <div id="adStats" class="grid2" style="margin-top:12px;"></div>
     <div class="head-row"><h3 class="section-title" style="font-size:16px;margin:0">Miembros</h3></div>
