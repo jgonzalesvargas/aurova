@@ -389,7 +389,17 @@ const TR_EN = {
   "¿Desconectar este banco?":"Disconnect this bank?","Sincronizando…":"Syncing…","No se pudo sincronizar.":"Couldn't sync.","movimientos nuevos importados":"new transactions imported"
 };
 const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
-function tr(html){ if(LANG!=="en"||typeof html!=="string") return html; let out=html; for(const [es,en] of TR_ORDER){ if(out.indexOf(es)>=0) out=out.split(es).join(en); } return out; }
+function tr(html){
+  if(LANG!=="en"||typeof html!=="string") return html;
+  // Traducir SOLO el texto visible, nunca el código dentro de etiquetas (onclick, id, etc.).
+  // Antes reemplazaba en todo el string y corrompía nombres de función (ej. openPlanes -> openPlans).
+  return html.replace(/<[^>]*>|[^<]+/g, seg=>{
+    if(seg[0]==="<") return seg; // es una etiqueta: no tocar
+    let t=seg;
+    for(const [es,en] of TR_ORDER){ if(t.indexOf(es)>=0) t=t.split(es).join(en); }
+    return t;
+  });
+}
 
 let state = seed();
 let VIEW = "inicio";
