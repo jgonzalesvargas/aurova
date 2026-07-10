@@ -1493,13 +1493,49 @@ function savePerfil(){ state.profile=state.profile||{}; state.profile.name=docum
 /* ============ Planes, códigos y referidos ============ */
 const ADMIN_EMAIL = "jesusgonzales0703@gmail.com";
 let REF_COUNT = 0;
+let SUB = null;
 function esAdmin(){ return USER && USER.email && USER.email.toLowerCase()===ADMIN_EMAIL; }
+async function loadSub(){
+  if(!USER){ SUB=null; return; }
+  try{ const {data}=await sb.from("subscriptions").select("*").eq("user_id",USER.id).maybeSingle(); SUB=data||null; }catch(e){ SUB=null; }
+}
+function subActiva(){
+  if(!SUB) return false;
+  if(SUB.status!=="active" && SUB.status!=="trialing") return false;
+  if(SUB.current_period_end && new Date(SUB.current_period_end) < new Date()) return false;
+  return true;
+}
 function planActivo(){
   if(esAdmin()) return true;               // el dueño siempre tiene acceso completo
+  if(subActiva()) return true;             // suscripción pagada en Stripe (fuente de verdad server-side)
   const p=state.profile||{};
   if(p.plan==="premium"){ if(!p.planExpires) return true; if(new Date(p.planExpires) > new Date()) return true; }
   if(REF_COUNT>0) return true;
   return false;
+}
+async function irACheckout(plan){
+  try{
+    const {data,error}=await sb.functions.invoke("stripe",{body:{action:"checkout",plan}});
+    if(error||!data||!data.url) throw error||new Error("sin url");
+    window.location.href=data.url;
+  }catch(e){ toast("No se pudo iniciar el pago. Intenta de nuevo."); }
+}
+async function abrirPortal(){
+  try{
+    const {data,error}=await sb.functions.invoke("stripe",{body:{action:"portal"}});
+    if(error||!data||!data.url) throw error||new Error("sin url");
+    window.location.href=data.url;
+  }catch(e){ toast("No se pudo abrir la administración."); }
+}
+async function pintarPrecios(){
+  try{
+    const {data}=await sb.functions.invoke("stripe",{body:{action:"prices"}});
+    if(!data) return;
+    const a=document.getElementById("plAnnual");
+    if(a) a.textContent="$"+(data.annual/100).toFixed(2)+"/año";
+    const f=document.getElementById("plFounder");
+    if(f && data.founderAvailable) f.innerHTML="✦ Precio fundador — quedan "+data.founderLeft+" de 100";
+  }catch(e){}
 }
 function genRefCode(){
   const base=(((state.profile&&state.profile.name)||"AUR").replace(/[^A-Za-z]/g,"").slice(0,4).toUpperCase())||"AUR";
@@ -1549,11 +1585,17 @@ function openPlanes(){
     <div style="text-align:center;">
       <div class="eyebrow">Aurova</div>
       <h3 style="font-family:var(--serif);font-size:24px;margin:4px 0;color:var(--cream);">${pro?"Premium ✦":"Planes"}</h3>
-      <div class="sub">${pro?("Tienes Premium"+(p.planExpires?(" hasta "+fdate(p.planExpires)):" para siempre")):"Desbloquea todo Aurova"}</div>
+      <div class="sub">${pro?(subActiva()?("Premium activo"+(SUB&&SUB.current_period_end?(" — se renueva "+fdate(String(SUB.current_period_end).slice(0,10))):"")):("Tienes Premium"+(p.planExpires?(" hasta "+fdate(p.planExpires)):" para siempre"))):"Desbloquea todo Aurova"}</div>
     </div>
     <div class="card" style="margin:14px 0 10px;"><div style="font-weight:700;color:var(--cream);margin-bottom:4px;">Free</div><div class="muted" style="font-size:13px;">Movimientos, pagos, metas, presupuesto, patrimonio, análisis y 2 idiomas.</div></div>
-    <div class="card" style="border-color:var(--champagne);"><div style="font-weight:700;color:var(--champagne);margin-bottom:4px;">Premium ✦</div><div class="muted" style="font-size:13px;">Todo lo de Free, más reportes en PDF, modo parejas, asistente IA, categorías ilimitadas y soporte prioritario. <i>(próximamente)</i></div></div>
-    ${pro?"":`<button class="btn block" style="margin-top:12px;" onclick="toast('El cobro llega pronto — por ahora usa un código')">Hazte Premium</button>`}
+    <div class="card" style="border-color:var(--champagne);"><div style="font-weight:700;color:var(--champagne);margin-bottom:4px;">Premium ✦</div><div class="muted" style="font-size:13px;">Todo lo de Free, más reportes en PDF, modo parejas, asistente IA, categorías ilimitadas y soporte prioritario.</div></div>
+    ${pro
+      ? (subActiva()?`<button class="btn block" style="margin-top:12px;" onclick="abrirPortal()">Administrar suscripción</button>`:"")
+      : `<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+          <button class="btn block" onclick="irACheckout('annual')">Premium anual — <span id="plAnnual">$59.99/año</span></button>
+          <button class="btn ghost block" onclick="irACheckout('monthly')">Premium mensual — $6.99/mes</button>
+          <div id="plFounder" class="muted" style="font-size:12px;text-align:center;margin-top:2px;"></div>
+        </div>`}
     <div class="field" style="margin-top:16px;"><label>¿Tienes un código?</label>
       <div style="display:flex;gap:8px;"><input id="plCode" type="text" placeholder="Ingresa tu código" style="flex:1;text-transform:uppercase;"><button class="btn sm" onclick="canjear()">Canjear</button></div></div>
     <div id="plMsg"></div>
@@ -1567,6 +1609,7 @@ function openPlanes(){
     </div>
     ${esAdmin()?`<button class="btn ghost block" style="margin-top:14px;" onclick="openAdminDash()">⚙️ Panel de admin</button>`:""}
     <button class="btn ghost block" style="margin-top:10px;" onclick="closeModal()">Cerrar</button>`);
+  if(!planActivo()) pintarPrecios();
 }
 function canjear(){
   const raw=document.getElementById("plCode").value;
@@ -1962,6 +2005,7 @@ async function loadCloud(){
     }catch(e){ pd.profile.household=null; }
   }
   if(isNew) await pushCloud();
+  try{ await loadSub(); }catch(e){}
   localStorage.setItem(KEY, JSON.stringify(state));
   LANG=(state.profile&&state.profile.lang)||"es";
   SEL=curMonth(); VIEW="inicio";
@@ -1971,9 +2015,23 @@ async function logout(){ try{ await sb.auth.signOut(); }catch(e){} USER=null; st
 async function boot(){
   try{
     const {data:{session}}=await sb.auth.getSession();
-    if(session){ USER=session.user; await loadCloud(); showApp(); }
+    if(session){ USER=session.user; await loadCloud(); showApp(); manejarRetornoStripe(); }
     else { showAuth(); }
   }catch(e){ showAuth(); }
+}
+function manejarRetornoStripe(){
+  const q=new URLSearchParams(location.search);
+  const c=q.get("checkout");
+  if(!c) return;
+  history.replaceState(null,"",location.pathname);
+  if(c==="success"){
+    toast("¡Pago recibido! Activando Premium ✦");
+    let tries=0;
+    const iv=setInterval(async()=>{
+      tries++; await loadSub();
+      if(subActiva()||tries>=6){ clearInterval(iv); if(subActiva()){ syncMember(); render(); toast("¡Premium activo! 🎉"); } }
+    },2500);
+  } else if(c==="cancel"){ toast("Pago cancelado."); }
 }
 sb.auth.onAuthStateChange((event)=>{ if(event==="PASSWORD_RECOVERY") showResetPassword(); });
 boot();
