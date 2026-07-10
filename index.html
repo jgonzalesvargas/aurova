@@ -2034,6 +2034,9 @@ function manejarRetornoStripe(){
   } else if(c==="cancel"){ toast("Pago cancelado."); }
 }
 sb.auth.onAuthStateChange((event)=>{ if(event==="PASSWORD_RECOVERY") showResetPassword(); });
+// TEMP: cazador de errores para diagnóstico (quitar después)
+window.onerror=function(msg,src,ln,col,err){ try{ toast("ERR L"+ln+": "+(msg||(err&&err.message)||err)); }catch(_){} return false; };
+window.addEventListener("unhandledrejection",function(e){ try{ toast("PROM: "+((e.reason&&e.reason.message)||e.reason)); }catch(_){} });
 boot();
 
 // PWA: instalable en iOS/Android + funciona offline
