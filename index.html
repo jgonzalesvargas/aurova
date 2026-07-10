@@ -386,7 +386,24 @@ const TR_EN = {
   "Conectar banco":"Connect bank","Conectar tu banco":"Connecting your bank","Trae tus movimientos automáticamente. Seguro — nunca vemos tu contraseña.":"Bring in your transactions automatically. Secure — we never see your password.",
   "＋ Conectar un banco":"＋ Connect a bank","Sincronizar ahora":"Sync now","La conexión bancaria aún no está configurada.":"Bank connection isn't set up yet.","Ningún banco conectado aún.":"No bank connected yet.",
   "Abriendo…":"Opening…","No se pudo conectar.":"Couldn't connect.","No se pudo conectar":"Couldn't connect","No se pudo cargar Plaid.":"Couldn't load Plaid.","Banco conectado ✓":"Bank connected ✓",
-  "¿Desconectar este banco?":"Disconnect this bank?","Sincronizando…":"Syncing…","No se pudo sincronizar.":"Couldn't sync.","movimientos nuevos importados":"new transactions imported"
+  "¿Desconectar este banco?":"Disconnect this bank?","Sincronizando…":"Syncing…","No se pudo sincronizar.":"Couldn't sync.","movimientos nuevos importados":"new transactions imported",
+  // Auditoría 2 — seguridad, pagos y varios
+  "La contraseña debe tener al menos 8 caracteres":"Password must be at least 8 characters",
+  "No se pudo iniciar el pago. Intenta de nuevo.":"Couldn't start the payment. Try again.",
+  "No se pudo abrir la administración.":"Couldn't open management.",
+  "¡Pago recibido! Activando Premium ✦":"Payment received! Activating Premium ✦",
+  "¡Premium activo! 🎉":"Premium active! 🎉",
+  "Pago cancelado.":"Payment canceled.",
+  "Administrar suscripción":"Manage subscription",
+  "Premium anual —":"Annual Premium —",
+  "Premium mensual — $6.99/mes":"Monthly Premium — $6.99/mo",
+  "$39.99/año":"$39.99/yr",
+  "Premium activo":"Premium active",
+  "se renueva":"renews",
+  "Aportar a":"Add to",
+  "Hola,":"Hi,",
+  "Ninguna":"None",
+  "‹ Volver":"‹ Back"
 };
 const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
 function tr(html){
@@ -555,7 +572,7 @@ function viewInicio(){
     ${recordatorioInicio()}
     ${MODE==="household"?`<div style="display:inline-block;background:rgba(201,169,106,.12);border:1px solid var(--champagne-line);border-radius:999px;padding:3px 12px;font-size:11px;color:var(--champagne);margin-bottom:10px;">👫 Cuenta conjunta</div>`:""}
     ${state.profile&&state.profile.name?`<div style="font-family:var(--serif);color:var(--cream);font-size:18px;margin:0 0 4px;">Hola, ${esc(state.profile.name)} 👋</div>`:""}
-    ${state.profile&&state.profile.goal&&GOAL_TIPS[state.profile.goal]?`<div class="muted" style="font-size:12.5px;margin:0 0 12px;">💡 ${GOAL_TIPS[state.profile.goal]}</div>`:""}
+    ${state.profile&&state.profile.goal&&goalTip(state.profile.goal)?`<div class="muted" style="font-size:12.5px;margin:0 0 12px;">💡 ${goalTip(state.profile.goal)}</div>`:""}
     <div class="hero ${q<0?'neg':''}">
       <div class="lbl">Me queda para gastar</div>
       <div class="big num">${money(q)}</div>
@@ -755,7 +772,7 @@ function semanalMeta(g){
 
 /* ============ VISTA: PRESUPUESTO (PLAN) ============ */
 function factorFreq(f){ return ({semanal:52/12,quincenal:26/12,mensual:1})[f]||1; }
-function freqLabel(f){ return ({semanal:"semanal",quincenal:"cada 2 sem",mensual:"mensual"})[f]||"mensual"; }
+function freqLabel(f){ const es={semanal:"semanal",quincenal:"cada 2 sem",mensual:"mensual"}; const en={semanal:"weekly",quincenal:"every 2 wks",mensual:"monthly"}; return (LANG==="en"?en:es)[f]||(LANG==="en"?"monthly":"mensual"); }
 function expectedMensual(r){ return (+r.amount||0)*factorFreq(r.freq||"mensual"); }
 function recibidoDe(r,m){ return txnsOf(m).filter(t=>t.type==="ingreso"&&t.note===r.name+" (pago)").reduce((s,t)=>s+t.amount,0); }
 function viewPresupuesto(){
@@ -1153,7 +1170,7 @@ function isoPlusMonths(n){ const d=new Date(); d.setMonth(d.getMonth()+n); retur
 let RANGE = 6;
 function setRange(n){ RANGE=n; render(); }
 function mesesBack(n){ const arr=[]; const d=new Date(curMonth()+"-01T00:00"); for(let i=n-1;i>=0;i--){ const x=new Date(d); x.setMonth(x.getMonth()-i); arr.push(x.toISOString().slice(0,7)); } return arr; }
-function mlabel3(m){ const mo=+m.split("-")[1], y=m.split("-")[0].slice(2); return mo===1?("ene '"+y):MESES[mo-1].slice(0,3); }
+function mlabel3(m){ const mo=+m.split("-")[1], y=m.split("-")[0].slice(2); const arr=LANG==="en"?MESES_EN:MESES; return mo===1?(arr[0].slice(0,3)+" '"+y):arr[mo-1].slice(0,3); }
 
 const accActivos = ()=>state.accounts.filter(a=>a.kind==="activo");
 const accDeudas = ()=>state.accounts.filter(a=>a.kind==="pasivo");
@@ -1379,6 +1396,8 @@ function toast(msg){ const t=document.getElementById("toast"); t.textContent=tr(
 /* ============ Onboarding (crear perfil) ============ */
 const ONB_GOALS=[["ahorrar","💰","Ahorrar / fondo de emergencia"],["deudas","💳","Salir de deudas"],["gastos","🔍","Entender mis gastos"],["presupuestar","📊","Presupuestar mejor"],["invertir","📈","Invertir / crecer patrimonio"]];
 const ONB_CUR=[["USD","Dólar estadounidense (USD $)"],["PEN","Sol peruano (S/)"],["MXN","Peso mexicano (MXN $)"],["EUR","Euro (€)"],["COP","Peso colombiano (COP $)"],["ARS","Peso argentino (ARS $)"],["CLP","Peso chileno (CLP $)"]];
+const ONB_CUR_EN=[["USD","US Dollar (USD $)"],["PEN","Peruvian Sol (S/)"],["MXN","Mexican Peso (MXN $)"],["EUR","Euro (€)"],["COP","Colombian Peso (COP $)"],["ARS","Argentine Peso (ARS $)"],["CLP","Chilean Peso (CLP $)"]];
+function curList(){ return LANG==="en"?ONB_CUR_EN:ONB_CUR; }
 const ONB_FREQ=[["semanal","Semanal"],["quincenal","Cada 2 semanas (bi-weekly)"],["mensual","Mensual"],["","No es fijo / saltar"]];
 const ONB_TOTAL=5;
 let ONB={}, ONB_STEP=0;
@@ -1418,7 +1437,7 @@ function renderOnb(){
     onbShell(`
       <h3 style="font-family:var(--serif);font-size:21px;text-align:center;">¿En qué moneda manejas tu dinero?</h3>
       <div class="sub" style="text-align:center;margin-bottom:14px;">Puedes cambiarla después.</div>
-      <div class="field"><select id="onbCur">${ONB_CUR.map(([k,l])=>`<option value="${k}" ${ONB.currency===k?'selected':''}>${l}</option>`).join("")}</select></div>
+      <div class="field"><select id="onbCur">${curList().map(([k,l])=>`<option value="${k}" ${ONB.currency===k?'selected':''}>${l}</option>`).join("")}</select></div>
       <button class="btn block" onclick="ONB.currency=document.getElementById('onbCur').value;onbNext()">Continuar</button>`);
   } else if(ONB_STEP===3){
     onbShell(`
@@ -1451,6 +1470,8 @@ function finishOnb(example){
   if(example){ cargarEjemplo(); } else { save(); closeModal(); render(); }
 }
 const GOAL_TIPS={ahorrar:"Crea una meta de ahorro y aparta un poco cada mes.",deudas:"Registra tus deudas en Análisis y baja el saldo cada vez que pagas.",gastos:"Mira 'Gastos por categoría' abajo para ver a dónde se va tu dinero.",presupuestar:"Ponle un límite a tus categorías en la pestaña Plan.",invertir:"Registra tus inversiones en Análisis y observa crecer tu patrimonio."};
+const GOAL_TIPS_EN={ahorrar:"Create a savings goal and set aside a bit each month.",deudas:"Log your debts in Insights and lower the balance each time you pay.",gastos:"Check 'Spending by category' below to see where your money goes.",presupuestar:"Set a limit for your categories in the Plan tab.",invertir:"Log your investments in Insights and watch your net worth grow."};
+function goalTip(g){ return (LANG==="en"?GOAL_TIPS_EN:GOAL_TIPS)[g]; }
 function recordatorioInicio(){
   if(!(state.profile&&state.profile.reminders)) return "";
   if(SEL!==curMonth()) return "";
@@ -1478,7 +1499,7 @@ function openPerfil(){
     </div>
     <div class="field"><label>Tu nombre</label><input id="pfName" type="text" value="${esc(p.name||"")}" placeholder="Ej. Jesús"></div>
     <div class="field"><label>Correo</label><input type="email" value="${esc(email)}" disabled style="opacity:.55;cursor:not-allowed;"></div>
-    <div class="field"><label>Moneda</label><select id="pfCur">${ONB_CUR.map(([k,l])=>`<option value="${k}" ${(p.currency||"USD")===k?"selected":""}>${l}</option>`).join("")}</select></div>
+    <div class="field"><label>Moneda</label><select id="pfCur">${curList().map(([k,l])=>`<option value="${k}" ${(p.currency||"USD")===k?"selected":""}>${l}</option>`).join("")}</select></div>
     <div class="field"><label>Idioma / Language</label><select id="pfLang"><option value="es" ${(p.lang||"es")==="es"?"selected":""}>Español</option><option value="en" ${p.lang==="en"?"selected":""}>English</option></select></div>
     <label style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--rule-strong);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer;"><span style="font-size:14px;">Recordatorios de pagos</span><input id="pfRem" type="checkbox" ${p.reminders?"checked":""} style="width:20px;height:20px;accent-color:var(--champagne);"></label>
     <p class="muted" style="font-size:12px;margin:2px 0 4px;">Miembro desde ${p.createdAt?fdate(p.createdAt):"hoy"}.</p>
@@ -1542,9 +1563,9 @@ async function pintarPrecios(){
     const {data}=await sb.functions.invoke("stripe",{body:{action:"prices"}});
     if(!data) return;
     const a=document.getElementById("plAnnual");
-    if(a) a.textContent="$"+(data.annual/100).toFixed(2)+"/año";
+    if(a) a.textContent="$"+(data.annual/100).toFixed(2)+(LANG==="en"?"/yr":"/año");
     const f=document.getElementById("plFounder");
-    if(f && data.founderAvailable) f.innerHTML="✦ Precio fundador — quedan "+data.founderLeft+" de 100";
+    if(f && data.founderAvailable) f.innerHTML=LANG==="en"?("✦ Founder price — "+data.founderLeft+" of 100 left"):("✦ Precio fundador — quedan "+data.founderLeft+" de 100");
   }catch(e){}
 }
 function genRefCode(){
@@ -1938,7 +1959,7 @@ function renderAuth(msg){
       <h1 style="font-family:var(--serif);font-weight:400;font-size:26px;color:var(--cream);text-align:center;margin:0;">Aurova</h1>
       <p class="sub" style="text-align:center;margin:6px 0 18px;color:var(--muted);font-size:13px;">${authMode==="login"?"Entra a tu cuenta":"Crea tu cuenta para empezar"}</p>
       <div class="field"><label>Correo</label><input id="auEmail" type="email" autocomplete="email" placeholder="tucorreo@ejemplo.com"></div>
-      <div class="field"><label>Contraseña</label><input id="auPass" type="password" autocomplete="${authMode==="login"?"current-password":"new-password"}" placeholder="Mínimo 6 caracteres" onkeydown="if(event.key==='Enter')authSubmit()"></div>
+      <div class="field"><label>Contraseña</label><div style="position:relative;"><input id="auPass" type="password" autocomplete="${authMode==="login"?"current-password":"new-password"}" placeholder="${authMode==="login"?"Tu contraseña":"Mínimo 8 caracteres"}" style="padding-right:46px;" onkeydown="if(event.key==='Enter')authSubmit()"><button type="button" onclick="togglePass('auPass',this)" aria-label="Mostrar u ocultar contraseña" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:16px;cursor:pointer;padding:2px 6px;line-height:1;">👁</button></div></div>
       ${msg?`<p style="font-size:12.5px;color:${msg.err?'var(--expense)':'var(--income)'};margin:2px 0 10px;">${esc(msg.text)}</p>`:""}
       <button class="btn block" id="auBtn" onclick="authSubmit()">${authMode==="login"?"Entrar":"Crear cuenta"}</button>
       ${authMode==="login"?`<p style="text-align:center;margin:10px 0 0;"><a onclick="forgotPassword()" style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;">¿Olvidaste tu contraseña?</a></p>`:""}
@@ -1950,11 +1971,12 @@ function renderAuth(msg){
     </div>`);
 }
 function toggleAuth(){ authMode = authMode==="login"?"signup":"login"; renderAuth(); }
+function togglePass(id,btn){ const el=document.getElementById(id); if(!el) return; if(el.type==="password"){ el.type="text"; if(btn) btn.textContent="🙈"; } else { el.type="password"; if(btn) btn.textContent="👁"; } }
 async function authSubmit(){
   const email=(document.getElementById("auEmail").value||"").trim();
   const pass=document.getElementById("auPass").value||"";
   if(!email||!pass){ renderAuth({err:true,text:"Escribe tu correo y contraseña"}); return; }
-  if(pass.length<6){ renderAuth({err:true,text:"La contraseña debe tener al menos 6 caracteres"}); return; }
+  if(authMode==="signup" && pass.length<8){ renderAuth({err:true,text:"La contraseña debe tener al menos 8 caracteres"}); return; }
   const btn=document.getElementById("auBtn"); btn.textContent=tr("Un momento…"); btn.disabled=true;
   try{
     if(authMode==="signup"){
@@ -1988,13 +2010,13 @@ function showResetPassword(){
     <div class="mono" style="margin:0 auto 14px;width:48px;height:48px;font-size:22px;">$</div>
     <h1 style="font-family:var(--serif);font-weight:400;font-size:24px;color:var(--cream);text-align:center;margin:0;">Nueva contraseña</h1>
     <p class="sub" style="text-align:center;margin:6px 0 16px;color:var(--muted);font-size:13px;">Escribe tu nueva contraseña.</p>
-    <div class="field"><label>Nueva contraseña</label><input id="rpPass" type="password" placeholder="Mínimo 6 caracteres" onkeydown="if(event.key==='Enter')guardarNuevaPass()"></div>
+    <div class="field"><label>Nueva contraseña</label><div style="position:relative;"><input id="rpPass" type="password" placeholder="Mínimo 8 caracteres" style="padding-right:46px;" onkeydown="if(event.key==='Enter')guardarNuevaPass()"><button type="button" onclick="togglePass('rpPass',this)" aria-label="Mostrar u ocultar contraseña" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:16px;cursor:pointer;padding:2px 6px;line-height:1;">👁</button></div></div>
     <div id="rpMsg"></div>
     <button class="btn block" onclick="guardarNuevaPass()">Guardar contraseña</button></div>`);
 }
 async function guardarNuevaPass(){
   const p=document.getElementById("rpPass").value||"", msg=document.getElementById("rpMsg");
-  if(p.length<6){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;margin:2px 0 8px;">${tr("La contraseña debe tener al menos 6 caracteres")}</p>`; return; }
+  if(p.length<8){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;margin:2px 0 8px;">${tr("La contraseña debe tener al menos 8 caracteres")}</p>`; return; }
   try{ const {error}=await sb.auth.updateUser({password:p}); if(error) throw error;
     const {data:{session}}=await sb.auth.getSession(); if(session){ USER=session.user; await loadCloud(); showApp(); } else { authMode="login"; showAuth(); }
   }catch(e){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;margin:2px 0 8px;">${tr("No se pudo. Intenta de nuevo.")}</p>`; }
