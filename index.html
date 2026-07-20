@@ -1536,13 +1536,26 @@ function subActiva(){
   if(SUB.current_period_end && new Date(SUB.current_period_end) < new Date()) return false;
   return true;
 }
+/* El plan lo decide el SERVIDOR, no este archivo.
+   Antes se aceptaba state.profile.plan desde localStorage: cualquiera podía
+   darse Premium editando datos en su navegador. Ahora ENT viene de la Edge
+   Function `stripe` (action:"entitlement"), que lo resuelve con service_role
+   sobre subscriptions + redemptions/promo_codes + referrals.
+   Ojo: esto es la UI. La puerta de verdad está dentro de ai-chat y plaid,
+   que niegan el servicio aunque alguien manipule este archivo. */
+let ENT = null;
+async function loadEntitlement(){
+  ENT=null;
+  if(!USER) return;
+  try{
+    const {data}=await sb.functions.invoke("stripe",{body:{action:"entitlement"}});
+    if(data && typeof data.premium==="boolean") ENT=data;
+  }catch(e){ ENT=null; }
+}
 function planActivo(){
-  if(esAdmin()) return true;               // el dueño siempre tiene acceso completo
-  if(subActiva()) return true;             // suscripción pagada en Stripe (fuente de verdad server-side)
-  const p=state.profile||{};
-  if(p.plan==="premium"){ if(!p.planExpires) return true; if(new Date(p.planExpires) > new Date()) return true; }
-  if(REF_COUNT>0) return true;
-  return false;
+  if(ENT) return ENT.premium;   // veredicto del servidor
+  if(subActiva()) return true;  // respaldo: subscriptions leída con RLS propia
+  return false;                 // ante la duda, Free
 }
 async function irACheckout(plan){
   try{
@@ -1647,7 +1660,9 @@ function canjear(){
   const m=document.getElementById("plMsg"); if(m) m.innerHTML=`<p class="muted" style="font-size:12.5px;margin:8px 0;">Validando…</p>`;
   redeemCode(raw).then(r=>{
     const el=document.getElementById("plMsg"); if(el) el.innerHTML=`<p style="font-size:12.5px;margin:8px 0;color:${r.ok?'var(--income)':'var(--expense)'};">${esc(r.msg)}</p>`;
-    if(r.ok){ syncMember(); setTimeout(()=>{ openPlanes(); render(); }, 1100); }
+    // Tras canjear, el veredicto lo vuelve a dar el servidor (la fila ya está
+    // en `redemptions`/`referrals`); no basta con lo que guardamos local.
+    if(r.ok){ syncMember(); loadEntitlement().then(()=>{ setTimeout(()=>{ openPlanes(); render(); }, 1100); }); }
   });
 }
 function compartirRef(){
@@ -2038,6 +2053,7 @@ async function loadCloud(){
   }
   if(isNew) await pushCloud();
   try{ await loadSub(); }catch(e){}
+  try{ await loadEntitlement(); }catch(e){}
   localStorage.setItem(KEY, JSON.stringify(state));
   LANG=(state.profile&&state.profile.lang)||"es";
   SEL=curMonth(); VIEW="inicio";
@@ -2060,8 +2076,8 @@ function manejarRetornoStripe(){
     toast("¡Pago recibido! Activando Premium ✦");
     let tries=0;
     const iv=setInterval(async()=>{
-      tries++; await loadSub();
-      if(subActiva()||tries>=6){ clearInterval(iv); if(subActiva()){ syncMember(); render(); toast("¡Premium activo! 🎉"); } }
+      tries++; await loadSub(); await loadEntitlement();
+      if(planActivo()||tries>=6){ clearInterval(iv); if(planActivo()){ syncMember(); render(); toast("¡Premium activo! 🎉"); } }
     },2500);
   } else if(c==="cancel"){ toast("Pago cancelado."); }
 }
