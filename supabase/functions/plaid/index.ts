@@ -7,6 +7,59 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+/* ---- Copia de _shared/entitlement.ts (cada función se despliega aparte) ---- */
+const ADMIN_EMAIL = "jesusgonzales0703@gmail.com";
+
+// deno-lint-ignore no-explicit-any
+async function esPremium(admin: any, userId: string, email?: string | null): Promise<boolean> {
+  if (email && email.toLowerCase() === ADMIN_EMAIL) return true;
+
+  const { data: sub } = await admin
+    .from("subscriptions").select("status, current_period_end")
+    .eq("user_id", userId).maybeSingle();
+  if (sub && (sub.status === "active" || sub.status === "trialing")) {
+    if (!sub.current_period_end || new Date(sub.current_period_end) > new Date()) return true;
+  }
+
+  const { data: canjes } = await admin
+    .from("redemptions").select("code, created_at").eq("user_id", userId);
+  if (canjes && canjes.length) {
+    const codigos = canjes.map((c: { code: string }) => c.code);
+    const { data: promos } = await admin
+      .from("promo_codes").select("code, months, active, plan").in("code", codigos);
+    for (const canje of canjes) {
+      const promo = (promos || []).find((p: { code: string }) => p.code === canje.code);
+      if (!promo || promo.active === false) continue;
+      if (promo.plan && promo.plan !== "premium") continue;
+      if (!promo.months) return true;
+      const vence = new Date(canje.created_at);
+      vence.setMonth(vence.getMonth() + promo.months);
+      if (vence > new Date()) return true;
+    }
+  }
+
+  const { data: refCode } = await admin
+    .from("referral_codes").select("code").eq("owner_id", userId).maybeSingle();
+  if (refCode?.code) {
+    const { count } = await admin
+      .from("referrals").select("*", { count: "exact", head: true })
+      .eq("referrer_code", refCode.code);
+    if ((count ?? 0) > 0) return true;
+  }
+
+  const { data: usado } = await admin
+    .from("referrals").select("created_at").eq("referee_id", userId)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (usado?.created_at) {
+    const vence = new Date(usado.created_at);
+    vence.setMonth(vence.getMonth() + 1);
+    if (vence > new Date()) return true;
+  }
+
+  return false;
+}
+/* ------------------------------------------------------------------------- */
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const json = (o: unknown, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
@@ -22,6 +75,13 @@ Deno.serve(async (req: Request) => {
     const { data: { user } } = await uc.auth.getUser();
     if (!user) return json({ error: "unauthorized" }, 401);
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    // Conectar bancos es de pago y Plaid factura por conexión y por sync. El
+    // candado del cliente (openBancos) no basta: cualquiera puede llamar esto
+    // desde la consola del navegador con una cuenta gratis.
+    if (!(await esPremium(admin, user.id, user.email))) {
+      return json({ error: "premium_required" }, 402);
+    }
 
     const body = await req.json().catch(() => ({}));
     const action = body.action;

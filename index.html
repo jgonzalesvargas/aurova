@@ -486,8 +486,12 @@ function save(){
   localStorage.setItem(KEY, JSON.stringify(state));
   if(USER){ clearTimeout(saveTimer); saveTimer=setTimeout(pushCloud, 700); }
 }
+/* true cuando NO pudimos leer la nube al arrancar. Mientras siga así no se
+   sube nada: no sabemos qué hay allá arriba y podríamos pisar datos buenos.
+   Al recargar con conexión, loadCloud lo vuelve a poner en false. */
+let OFFLINE=false;
 async function pushCloud(){
-  if(!USER) return;
+  if(!USER || OFFLINE) return;
   const now=new Date().toISOString();
   try{
     if(MODE==="household" && HH){
@@ -1341,7 +1345,11 @@ const DEBT_TYPES=Object.keys(TYPE_META).filter(t=>TYPE_META[t].kind==="pasivo");
 function openAccount(id,group){
   const a=id?state.accounts.find(x=>x.id===id):null;
   const curType = a?a.type : (group==="deuda"?"Tarjeta de crédito":"Efectivo");
-  const opt=t=>`<option ${curType===t?"selected":""}>${t}</option>`;
+  // value= explícito: sin él, select.value devolvía el TEXTO, que en inglés
+  // tr() ya había traducido ("Tarjeta de crédito" -> "Credit card"). Como
+  // TYPE_META no tiene esa clave, la deuda se guardaba como activo y el
+  // patrimonio salía al revés. tr() no toca el interior de las etiquetas.
+  const opt=t=>`<option value="${esc(t)}" ${curType===t?"selected":""}>${t}</option>`;
   modal(`
     <h3>${a?"Editar":"Agregar"} cuenta</h3>
     <div class="sub">Pon los detalles reales — la app calcula tu patrimonio e intereses.</div>
@@ -1358,7 +1366,7 @@ function openAccount(id,group){
   acFields(curType, a);
 }
 function acFields(type, a){
-  const cfg=TYPE_META[type]||{kind:"activo"};
+  const cfg=TYPE_META[tipoCanonico(type)]||{kind:"activo"};
   const val=(k,d="")=>a&&a[k]!=null?a[k]:d;
   let h=`<div class="field"><label>${cfg.kind==="pasivo"?"Saldo que debes":"Valor actual"}</label><input id="acValue" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${val("value")}"></div>`;
   if(cfg.limit) h+=`<div class="field"><label>Límite de crédito</label><input id="acLimit" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${val("limit")}"></div>`;
@@ -1373,10 +1381,19 @@ function acFields(type, a){
   document.getElementById("acDyn").innerHTML=h;
 }
 function numOf(id){ const el=document.getElementById(id); if(!el) return 0; const v=parseFloat(el.value); return isNaN(v)?0:v; }
+/* Red de seguridad: acepta el tipo en español o en inglés y devuelve siempre
+   la clave canónica. Cubre cuentas guardadas antes del arreglo del value=. */
+const TIPO_EN_ES = Object.fromEntries(Object.keys(TYPE_META).map(k=>[TR_EN[k]||k, k]));
+function tipoCanonico(t){ return TYPE_META[t] ? t : (TIPO_EN_ES[t] || t); }
+
 function saveAccount(id){
   const name=document.getElementById("acName").value.trim();
-  const type=document.getElementById("acType").value;
-  const kind=(TYPE_META[type]||{}).kind||"activo";
+  const type=tipoCanonico(document.getElementById("acType").value);
+  const meta=TYPE_META[type];
+  // Sin fallback silencioso a "activo": si no reconocemos el tipo, mejor
+  // fallar visiblemente que guardar una deuda del lado equivocado.
+  if(!meta){ toast("No se reconoce ese tipo de cuenta"); return; }
+  const kind=meta.kind;
   if(!name){ toast("Escribe un nombre"); return; }
   const value=numOf("acValue");
   if(value<=0){ toast(kind==="pasivo"?"Pon el saldo que debes":"Pon el valor de la cuenta"); return; }
@@ -2167,8 +2184,26 @@ async function guardarNuevaPass(){
   }catch(e){ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;margin:2px 0 8px;">${tr("No se pudo. Intenta de nuevo.")}</p>`; }
 }
 async function loadCloud(){
-  let row=null;
-  try{ const {data}=await sb.from("user_data").select("data").eq("user_id",USER.id).maybeSingle(); row=data; }catch(e){}
+  let row=null, sinNube=false;
+  try{
+    const {data,error}=await sb.from("user_data").select("data").eq("user_id",USER.id).maybeSingle();
+    if(error) throw error;   // antes se ignoraba: un fallo de red parecía "cuenta vacía"
+    row=data;
+  }catch(e){ sinNube=true; console.warn("[loadCloud] no se pudo leer la nube:",e); }
+
+  if(sinNube){
+    // NO asumir "usuario nuevo". Antes se generaba una cuenta en blanco y se
+    // SUBÍA a la nube (pushCloud más abajo), borrando el historial real de
+    // quien simplemente abrió la app sin señal. Ahora se usa el respaldo
+    // local —que siempre estuvo ahí y nunca se leía— y no se toca la nube.
+    OFFLINE=true;
+    state=load(); PERSONAL=financesOf(state); MODE="personal"; HH=null;
+    LANG=(state.profile&&state.profile.lang)||"es";
+    SEL=curMonth(); VIEW="inicio";
+    return;
+  }
+  OFFLINE=false;
+
   const isNew = !(row && row.data && Object.keys(row.data).length);
   let pd;
   if(isNew){ pd=seed(); pd.profile.lang=(navigator.language||"es").toLowerCase().startsWith("en")?"en":"es"; localStorage.removeItem("mifin_welcomed"); }
@@ -2199,6 +2234,7 @@ async function boot(){
       // sesión, pedir el código antes de mostrar nada.
       if(await faltaSegundoPaso()){ showMfaChallenge(); return; }
       await loadCloud(); showApp(); manejarRetornoStripe();
+      if(OFFLINE) setTimeout(()=>toast(tr("Sin conexión — estás viendo tu copia local. No se guardará en la nube hasta que vuelvas a entrar con internet.")),600);
     }
     else { showAuth(); }
   }catch(e){ showAuth(); }
