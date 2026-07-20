@@ -1512,6 +1512,7 @@ function openPerfil(){
     <button class="btn ghost block" style="margin-top:8px;" onclick="openParejas()">👫 ${MODE==="household"?"Cuenta conjunta activa":"Cuenta de parejas"}</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openAsistente()">🤖 Asistente IA${planActivo()?"":" ✦"}</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openBancos()">🏦 Conectar banco${planActivo()?"":" ✦"}</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="openSeguridad()">🔒 Verificación en dos pasos</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openAjustes()">⚙️ Ajustes y datos</button>
     <button class="btn ghost block" style="margin-top:8px;color:var(--expense);border-color:var(--expense);" onclick="logout()">Cerrar sesión</button>`);
 }
@@ -1978,6 +1979,7 @@ function renderAuth(msg){
       ${msg?`<p style="font-size:12.5px;color:${msg.err?'var(--expense)':'var(--income)'};margin:2px 0 10px;">${esc(msg.text)}</p>`:""}
       <button class="btn block" id="auBtn" onclick="authSubmit()">${authMode==="login"?"Entrar":"Crear cuenta"}</button>
       ${authMode==="login"?`<p style="text-align:center;margin:10px 0 0;"><a onclick="forgotPassword()" style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;">¿Olvidaste tu contraseña?</a></p>`:""}
+      ${(authMode==="login"&&PEND_EMAIL)?`<p style="text-align:center;margin:8px 0 0;"><a onclick="reenviarConfirmacion()" style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;">¿No te llegó el correo de confirmación? Reenviar</a></p>`:""}
       <p style="text-align:center;font-size:13px;margin:14px 0 0;color:var(--muted)">
         ${authMode==="login"?"¿No tienes cuenta?":"¿Ya tienes cuenta?"}
         <a onclick="toggleAuth()" style="color:var(--champagne);cursor:pointer;text-decoration:underline;">${authMode==="login"?"Crear una":"Entrar"}</a>
@@ -1995,22 +1997,150 @@ async function authSubmit(){
   const btn=document.getElementById("auBtn"); btn.textContent=tr("Un momento…"); btn.disabled=true;
   try{
     if(authMode==="signup"){
-      const {data,error}=await sb.auth.signUp({email,password:pass});
+      // emailRedirectTo faltaba: sin él, el enlace del correo no sabe a dónde
+      // volver y la confirmación queda a medias.
+      const {data,error}=await sb.auth.signUp({email,password:pass,options:{emailRedirectTo:location.origin}});
       if(error) throw error;
-      if(!data.session){ authMode="login"; renderAuth({text:"Cuenta creada ✓ Revisa tu correo para confirmar, luego entra."}); return; }
+      if(!data.session){ PEND_EMAIL=email; authMode="login"; renderAuth({text:"Cuenta creada ✓ Revisa tu correo para confirmar, luego entra."}); return; }
       USER=data.user; await loadCloud(); showApp(); return;
     } else {
       const {data,error}=await sb.auth.signInWithPassword({email,password:pass});
       if(error) throw error;
-      USER=data.user; await loadCloud(); showApp(); return;
+      USER=data.user;
+      if(await faltaSegundoPaso()){ showMfaChallenge(); return; }
+      await loadCloud(); showApp(); return;
     }
   }catch(e){
     const m=(e&&e.message)||"Error";
+    const sinConfirmar = /Email not confirmed/i.test(m);
+    if(sinConfirmar) PEND_EMAIL=email;
     const txt = /Invalid login/i.test(m)?"Correo o contraseña incorrectos"
       : /already registered/i.test(m)?"Ese correo ya tiene cuenta — mejor entra"
-      : /Email not confirmed/i.test(m)?"Confirma tu correo primero (revisa tu email)"
+      : sinConfirmar?"Confirma tu correo primero (revisa tu email y la carpeta de spam)"
       : m;
     renderAuth({err:true,text:txt});
+  }
+}
+
+/* ============ Verificación en dos pasos (TOTP) ============
+   Opcional: aquí cada quien ve solo sus propios datos, así que obligarla
+   frenaría la adopción sin proteger a terceros. Quien la activa, la usa. */
+async function faltaSegundoPaso(){
+  try{
+    const {data,error}=await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+    if(error) return false;
+    return data && data.nextLevel==="aal2" && data.currentLevel!=="aal2";
+  }catch(e){ return false; }   // ante un fallo de red, no dejar a nadie fuera
+}
+async function factorTotp(){
+  try{
+    const {data}=await sb.auth.mfa.listFactors();
+    return ((data&&data.totp)||[]).find(f=>f.status==="verified")||null;
+  }catch(e){ return null; }
+}
+function showMfaChallenge(msg){
+  document.body.classList.add("logged-out"); document.getElementById("modalRoot").innerHTML="";
+  document.getElementById("authGate").innerHTML=tr(`<div class="auth-card">
+    <div class="mono" style="margin:0 auto 14px;width:48px;height:48px;font-size:22px;">$</div>
+    <h1 style="font-family:var(--serif);font-weight:400;font-size:24px;color:var(--cream);text-align:center;margin:0;">Un paso más</h1>
+    <p class="sub" style="text-align:center;margin:6px 0 16px;color:var(--muted);font-size:13px;">Escribe el código de 6 dígitos de tu app autenticadora.</p>
+    <div class="field"><input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:.4em;font-size:18px;" onkeydown="if(event.key==='Enter')verificarMfaLogin()"></div>
+    ${msg?`<p style="font-size:12.5px;color:var(--expense);margin:2px 0 10px;">${esc(msg)}</p>`:""}
+    <button class="btn block" onclick="verificarMfaLogin()">Verificar y entrar</button>
+    <p style="text-align:center;margin:12px 0 0;"><a onclick="logout()" style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;">Cancelar y salir</a></p></div>`);
+  const el=document.getElementById("mfaCode"); if(el) el.focus();
+}
+async function verificarMfaLogin(){
+  const code=((document.getElementById("mfaCode")||{}).value||"").replace(/\D/g,"");
+  if(code.length!==6){ showMfaChallenge("El código debe tener 6 dígitos"); return; }
+  const f=await factorTotp();
+  if(!f){ await loadCloud(); showApp(); return; }
+  try{
+    const {data:ch,error:e1}=await sb.auth.mfa.challenge({factorId:f.id}); if(e1) throw e1;
+    const {error:e2}=await sb.auth.mfa.verify({factorId:f.id,challengeId:ch.id,code}); if(e2) throw e2;
+    await loadCloud(); showApp();
+  }catch(e){ showMfaChallenge("Código incorrecto o vencido. Prueba con el nuevo."); }
+}
+async function openSeguridad(){
+  const f=await factorTotp();
+  if(f){
+    modal(`<h3>${tr("Verificación en dos pasos")}</h3>
+      <div class="sub">${tr("Está activa. Tu cuenta pide un código de tu app cada vez que entras.")}</div>
+      <div class="sheet-actions">
+        <button class="btn ghost" onclick="closeModal()">${tr("Cerrar")}</button>
+        <button class="btn" style="background:var(--expense);border-color:var(--expense);" onclick="desactivarMfa('${f.id}')">${tr("Desactivar")}</button>
+      </div>`);
+    return;
+  }
+  modal(`<h3>${tr("Verificación en dos pasos")}</h3>
+    <div class="sub">${tr("Un segundo candado: aunque alguien sepa tu contraseña, no entra sin tu celular.")}</div>
+    <p class="muted" style="font-size:12.5px;">${tr("Necesitas Google Authenticator, Microsoft Authenticator o Authy en tu teléfono. Son gratis.")}</p>
+    <div id="mfaSetup"></div>
+    <div class="sheet-actions">
+      <button class="btn ghost" onclick="closeModal()">${tr("Cancelar")}</button>
+      <button class="btn" id="mfaStart" onclick="empezarMfa()">${tr("Empezar")}</button>
+    </div>`);
+}
+let MFA_FACTOR=null;
+async function empezarMfa(){
+  const box=document.getElementById("mfaSetup"), btn=document.getElementById("mfaStart");
+  if(btn){ btn.disabled=true; btn.textContent=tr("Generando…"); }
+  try{
+    // Limpia intentos previos sin verificar: si no, Supabase rechaza el alta
+    // por nombre repetido y el usuario se queda atascado sin saber por qué.
+    const {data:prev}=await sb.auth.mfa.listFactors();
+    for(const x of ((prev&&prev.all)||[])) if(x.status==="unverified") await sb.auth.mfa.unenroll({factorId:x.id});
+    const {data,error}=await sb.auth.mfa.enroll({factorType:"totp",friendlyName:"Aurova"});
+    if(error) throw error;
+    MFA_FACTOR=data.id;
+    box.innerHTML=`
+      <div style="display:flex;justify-content:center;background:#fff;border-radius:12px;padding:12px;margin:10px 0;">
+        <img src="${data.totp.qr_code}" alt="QR" style="width:170px;height:170px;">
+      </div>
+      <p class="muted" style="font-size:11.5px;text-align:center;margin:0 0 8px;word-break:break-all;">${tr("O escribe esta clave")}: <code>${esc(data.totp.secret)}</code></p>
+      <div class="field"><label>${tr("Código de 6 dígitos")}</label><input id="mfaEnrollCode" inputmode="numeric" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:.4em;" onkeydown="if(event.key==='Enter')confirmarMfa()"></div>
+      <div id="mfaMsg"></div>`;
+    if(btn){ btn.disabled=false; btn.textContent=tr("Activar"); btn.setAttribute("onclick","confirmarMfa()"); }
+  }catch(e){
+    box.innerHTML=`<p style="color:var(--expense);font-size:12.5px;">${tr("No se pudo generar el código. Intenta de nuevo.")}</p>`;
+    if(btn){ btn.disabled=false; btn.textContent=tr("Empezar"); }
+  }
+}
+async function confirmarMfa(){
+  const code=((document.getElementById("mfaEnrollCode")||{}).value||"").replace(/\D/g,"");
+  const msg=document.getElementById("mfaMsg");
+  const err=t=>{ if(msg) msg.innerHTML=`<p style="color:var(--expense);font-size:12.5px;margin:4px 0 0;">${tr(t)}</p>`; };
+  if(code.length!==6){ err("El código debe tener 6 dígitos"); return; }
+  try{
+    const {data:ch,error:e1}=await sb.auth.mfa.challenge({factorId:MFA_FACTOR}); if(e1) throw e1;
+    const {error:e2}=await sb.auth.mfa.verify({factorId:MFA_FACTOR,challengeId:ch.id,code}); if(e2) throw e2;
+    closeModal(); toast(tr("Verificación en dos pasos activada ✓"));
+  }catch(e){ err("Código incorrecto. Revisa que la hora de tu teléfono esté en automático."); }
+}
+async function desactivarMfa(id){
+  if(!confirm(tr("¿Desactivar la verificación en dos pasos?"))) return;
+  try{ const {error}=await sb.auth.mfa.unenroll({factorId:id}); if(error) throw error;
+    closeModal(); toast(tr("Verificación desactivada"));
+  }catch(e){ toast(tr("No se pudo desactivar")); }
+}
+
+/* Reenviar el correo de confirmación. Sin esto, quien no recibió el primero
+   (spam, dedazo al escribir) se quedaba sin forma de entrar ni de reintentar. */
+let PEND_EMAIL="";
+async function reenviarConfirmacion(){
+  const email=PEND_EMAIL||((document.getElementById("auEmail")||{}).value||"").trim();
+  if(!email){ renderAuth({err:true,text:"Escribe tu correo primero"}); return; }
+  try{
+    const {error}=await sb.auth.resend({type:"signup",email,options:{emailRedirectTo:location.origin}});
+    if(error) throw error;
+    PEND_EMAIL=email;
+    renderAuth({text:"Te reenviamos el correo de confirmación. Revisa tu bandeja y la carpeta de spam."});
+  }catch(e){
+    const m=(e&&e.message)||"";
+    // Si ya está confirmado, Supabase responde error: es buena noticia.
+    renderAuth(/already confirmed/i.test(m)
+      ? {text:"Tu correo ya está confirmado — puedes entrar."}
+      : {err:true,text:"No se pudo reenviar. Espera un minuto e inténtalo de nuevo."});
   }
 }
 async function forgotPassword(){
@@ -2063,7 +2193,13 @@ async function logout(){ try{ await sb.auth.signOut(); }catch(e){} USER=null; st
 async function boot(){
   try{
     const {data:{session}}=await sb.auth.getSession();
-    if(session){ USER=session.user; await loadCloud(); showApp(); manejarRetornoStripe(); }
+    if(session){
+      USER=session.user;
+      // Sesión guardada del navegador: si tiene 2FA y aún no la usó en esta
+      // sesión, pedir el código antes de mostrar nada.
+      if(await faltaSegundoPaso()){ showMfaChallenge(); return; }
+      await loadCloud(); showApp(); manejarRetornoStripe();
+    }
     else { showAuth(); }
   }catch(e){ showAuth(); }
 }
