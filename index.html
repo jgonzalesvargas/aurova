@@ -402,6 +402,7 @@ const TR_EN = {
   "se renueva":"renews",
   "Aportar a":"Add to",
   "Hola,":"Hi,",
+  "Se actualizó con lo de tu otro dispositivo":"Updated with what's on your other device",
   "Ninguna":"None",
   "‹ Volver":"‹ Back",
   // Plan para salir de deudas. Frases largas y completas a propósito: tr() hace
@@ -543,6 +544,16 @@ function save(){
    sube nada: no sabemos qué hay allá arriba y podríamos pisar datos buenos.
    Al recargar con conexión, loadCloud lo vuelve a poner en false. */
 let OFFLINE=false;
+
+/* Versión de la nube que tenemos cargada.
+   Cada guardado sube el perfil ENTERO de una pieza, así que sin esto el último
+   en guardar pisaba todo lo del otro: agregabas una meta en la laptop, tocabas
+   un pago en el celular (que seguía con la versión vieja) y la meta
+   desaparecía. Sin error, sin aviso. Ahora solo escribimos si la nube sigue
+   en la versión que leímos; si alguien más escribió, no pisamos. */
+let CLOUD_TS=null;
+const BACKUP_KEY = KEY + "_respaldo";
+
 async function pushCloud(){
   if(!USER || OFFLINE) return;
   const now=new Date().toISOString();
@@ -550,11 +561,57 @@ async function pushCloud(){
     if(MODE==="household" && HH){
       await sb.from("household_data").upsert({household_id:HH,data:financesOf(state),updated_at:now});
       await sb.from("user_data").upsert({user_id:USER.id,data:Object.assign({},PERSONAL||{},{profile:state.profile}),updated_at:now});
-    } else {
-      await sb.from("user_data").upsert({user_id:USER.id,data:state,updated_at:now});
-      PERSONAL=financesOf(state);
+      CLOUD_TS=now;
+      return;
     }
+
+    // Primera escritura de la cuenta: no hay versión previa que respetar.
+    if(!CLOUD_TS){
+      const {error}=await sb.from("user_data").upsert({user_id:USER.id,data:state,updated_at:now});
+      if(error) throw error;
+      CLOUD_TS=now; PERSONAL=financesOf(state);
+      return;
+    }
+
+    // Escritura condicionada: solo si nadie guardó después de lo que leímos.
+    const {data,error}=await sb.from("user_data")
+      .update({data:state, updated_at:now})
+      .eq("user_id",USER.id)
+      .eq("updated_at",CLOUD_TS)
+      .select("updated_at");
+    if(error) throw error;
+
+    if(data && data.length){ CLOUD_TS=data[0].updated_at||now; PERSONAL=financesOf(state); return; }
+
+    // Cero filas = otro dispositivo escribió mientras tanto. No pisamos.
+    await resolverConflicto();
   }catch(e){ /* queda en localStorage; reintenta en el próximo save */ }
+}
+
+/* Alguien más guardó. Traemos lo de la nube y dejamos ESTA versión guardada
+   aparte, para que nada se pierda aunque el usuario no haga nada. */
+async function resolverConflicto(){
+  try{ localStorage.setItem(BACKUP_KEY, JSON.stringify({cuando:new Date().toISOString(), state})); }catch(e){}
+  try{
+    const {data}=await sb.from("user_data").select("data, updated_at").eq("user_id",USER.id).maybeSingle();
+    if(!data) return;
+    CLOUD_TS=data.updated_at;
+    state=normalizeState(data.data); PERSONAL=financesOf(state);
+    localStorage.setItem(KEY, JSON.stringify(state));
+    render();
+    toast("Se actualizó con lo de tu otro dispositivo");
+  }catch(e){}
+}
+
+/* Al volver a la app comprobamos si cambió en otro lado. Es lo que evita la
+   mayoría de los choques: una pestaña abierta desde ayer deja de estar vieja
+   en cuanto la miras. Solo pide la fecha, no el perfil entero. */
+async function refrescarSiCambio(){
+  if(!USER || OFFLINE || !CLOUD_TS) return;
+  try{
+    const {data}=await sb.from("user_data").select("updated_at").eq("user_id",USER.id).maybeSingle();
+    if(data && data.updated_at && data.updated_at!==CLOUD_TS) await resolverConflicto();
+  }catch(e){}
 }
 
 function seed(){
@@ -2543,9 +2600,10 @@ async function guardarNuevaPass(){
 async function loadCloud(){
   let row=null, sinNube=false;
   try{
-    const {data,error}=await sb.from("user_data").select("data").eq("user_id",USER.id).maybeSingle();
+    const {data,error}=await sb.from("user_data").select("data, updated_at").eq("user_id",USER.id).maybeSingle();
     if(error) throw error;   // antes se ignoraba: un fallo de red parecía "cuenta vacía"
     row=data;
+    CLOUD_TS = data ? data.updated_at : null;   // versión que estamos cargando
   }catch(e){ sinNube=true; console.warn("[loadCloud] no se pudo leer la nube:",e); }
 
   if(sinNube){
@@ -2553,7 +2611,7 @@ async function loadCloud(){
     // SUBÍA a la nube (pushCloud más abajo), borrando el historial real de
     // quien simplemente abrió la app sin señal. Ahora se usa el respaldo
     // local —que siempre estuvo ahí y nunca se leía— y no se toca la nube.
-    OFFLINE=true;
+    OFFLINE=true; CLOUD_TS=null;
     state=load(); PERSONAL=financesOf(state); MODE="personal"; HH=null;
     LANG=(state.profile&&state.profile.lang)||"es";
     SEL=curMonth(); VIEW="inicio";
@@ -2580,7 +2638,13 @@ async function loadCloud(){
   LANG=(state.profile&&state.profile.lang)||"es";
   SEL=curMonth(); VIEW="inicio";
 }
-async function logout(){ try{ await sb.auth.signOut(); }catch(e){} USER=null; state=seed(); localStorage.removeItem(KEY); showAuth(); }
+// Volver a la app (cambiar de pestaña, desbloquear el teléfono) comprueba si
+// cambió en otro dispositivo. Sin esto, una pestaña abierta desde ayer guarda
+// sobre lo de hoy en cuanto tocas cualquier cosa.
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) refrescarSiCambio(); });
+window.addEventListener("focus", refrescarSiCambio);
+
+async function logout(){ try{ await sb.auth.signOut(); }catch(e){} USER=null; state=seed(); CLOUD_TS=null; localStorage.removeItem(KEY); showAuth(); }
 
 async function boot(){
   try{
