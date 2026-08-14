@@ -100,6 +100,30 @@ async function founderTaken(): Promise<number> {
   return count ?? 0;
 }
 
+/** Mayor descuento vigente que este usuario haya canjeado. 0 si no tiene.
+ *  Se lee de la base con service role: los canjes los escribe la función
+ *  `canjear_codigo`, no el navegador, así que este número no se puede falsear. */
+async function descuentoDe(userId: string): Promise<number> {
+  const { data: canjes } = await admin
+    .from("redemptions").select("code").eq("user_id", userId);
+  if (!canjes || !canjes.length) return 0;
+
+  const { data: promos } = await admin
+    .from("promo_codes")
+    .select("code, kind, percent, active, expires_at")
+    .in("code", canjes.map((c: { code: string }) => c.code));
+  if (!promos) return 0;
+
+  let mejor = 0;
+  for (const p of promos) {
+    if (p.kind !== "discount" || p.active === false) continue;
+    if (p.expires_at && new Date(p.expires_at) <= new Date()) continue;
+    const pct = Number(p.percent) || 0;
+    if (pct > mejor) mejor = Math.min(100, pct);
+  }
+  return mejor;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -169,6 +193,22 @@ Deno.serve(async (req) => {
         isFounder = taken < FOUNDER_LIMIT;
         unitAmount = isFounder ? PRICE_ANNUAL_FOUNDER : PRICE_ANNUAL;
         name = isFounder ? "Aurova Premium (Anual — Fundador)" : "Aurova Premium (Anual)";
+      }
+
+      // Descuento por código canjeado.
+      //
+      // Hasta ahora esto no existía: el cliente guardaba el porcentaje en
+      // localStorage, mostraba "Descuento del 50% aplicado ✓" y mandaba a
+      // pagar el precio completo. Se le cobraba de más justo a quien confió
+      // en un cupón.
+      //
+      // Se resuelve AQUÍ, contra la base, y nunca con lo que mande el
+      // navegador: si el porcentaje viniera del cliente, cualquiera pediría
+      // el 100%.
+      const pct = await descuentoDe(user.id);
+      if (pct > 0) {
+        unitAmount = Math.max(50, Math.round(unitAmount * (100 - pct) / 100)); // Stripe exige ≥ $0.50
+        name += ` — ${pct}% de descuento`;
       }
 
       const session = await stripe.checkout.sessions.create({

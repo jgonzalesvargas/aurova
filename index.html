@@ -552,6 +552,10 @@ let OFFLINE=false;
    desaparecía. Sin error, sin aviso. Ahora solo escribimos si la nube sigue
    en la versión que leímos; si alguien más escribió, no pisamos. */
 let CLOUD_TS=null;
+/* Igual que CLOUD_TS pero para la cuenta conjunta, que vive en otra tabla.
+   La cuenta conjunta es EL caso que más se pisa —dos personas, dos teléfonos,
+   la misma cuenta, todo el día— y encima es una función de pago. */
+let HH_TS=null;
 const BACKUP_KEY = KEY + "_respaldo";
 
 async function pushCloud(){
@@ -559,7 +563,22 @@ async function pushCloud(){
   const now=new Date().toISOString();
   try{
     if(MODE==="household" && HH){
-      await sb.from("household_data").upsert({household_id:HH,data:financesOf(state),updated_at:now});
+      if(!HH_TS){
+        const {error}=await sb.from("household_data").upsert({household_id:HH,data:financesOf(state),updated_at:now});
+        if(error) throw error;
+        HH_TS=now;
+      }else{
+        const {data,error}=await sb.from("household_data")
+          .update({data:financesOf(state), updated_at:now})
+          .eq("household_id",HH)
+          .eq("updated_at",HH_TS)
+          .select("updated_at");
+        if(error) throw error;
+        if(!(data && data.length)){ await resolverConflictoHogar(); return; }
+        HH_TS=data[0].updated_at||now;
+      }
+      // El perfil personal (idioma, plan, nombre) no es del hogar: va a su
+      // propia fila y no compite con la pareja.
       await sb.from("user_data").upsert({user_id:USER.id,data:Object.assign({},PERSONAL||{},{profile:state.profile}),updated_at:now});
       CLOUD_TS=now;
       return;
@@ -603,12 +622,34 @@ async function resolverConflicto(){
   }catch(e){}
 }
 
+/* Lo mismo para la cuenta conjunta: traemos lo que guardó la pareja y dejamos
+   esta versión aparte. Aquí importa más que en personal — son dos personas
+   escribiendo a la vez, y lo que se pierde es trabajo del otro. */
+async function resolverConflictoHogar(){
+  try{ localStorage.setItem(BACKUP_KEY, JSON.stringify({cuando:new Date().toISOString(), state})); }catch(e){}
+  try{
+    const {data}=await sb.from("household_data").select("data, updated_at").eq("household_id",HH).maybeSingle();
+    if(!data) return;
+    HH_TS=data.updated_at;
+    state=Object.assign({profile:state.profile}, financesOf(normalizeState(data.data)));
+    localStorage.setItem(KEY, JSON.stringify(state));
+    render();
+    toast("Se actualizó con lo que guardó tu pareja");
+  }catch(e){}
+}
+
 /* Al volver a la app comprobamos si cambió en otro lado. Es lo que evita la
    mayoría de los choques: una pestaña abierta desde ayer deja de estar vieja
    en cuanto la miras. Solo pide la fecha, no el perfil entero. */
 async function refrescarSiCambio(){
-  if(!USER || OFFLINE || !CLOUD_TS) return;
+  if(!USER || OFFLINE) return;
   try{
+    if(MODE==="household" && HH && HH_TS){
+      const {data}=await sb.from("household_data").select("updated_at").eq("household_id",HH).maybeSingle();
+      if(data && data.updated_at && data.updated_at!==HH_TS) await resolverConflictoHogar();
+      return;
+    }
+    if(!CLOUD_TS) return;
     const {data}=await sb.from("user_data").select("updated_at").eq("user_id",USER.id).maybeSingle();
     if(data && data.updated_at && data.updated_at!==CLOUD_TS) await resolverConflicto();
   }catch(e){}
@@ -639,12 +680,24 @@ function aportesMetasMes(m){ return state.goals.reduce((s,g)=>s+(g.contribs||[])
 // Deudas con pago mensual = obligaciones pagables (se unen a la sección Pagos)
 function deudasPagables(){ return state.accounts.filter(a=>a.kind==="pasivo" && (+a.value||0)>0 && (+a.payment||0)>0); }
 // Todos los pagos del mes (recurrentes manuales + deudas), unificados
+/* Dos cifras distintas a propósito, y las dos hacen falta:
+     amount  = lo que pagas ESE día (lo que sale de tu cuenta)
+     mensual = lo que suma en el mes (lo que cuenta para el plan)
+   Para algo mensual son iguales. Para un pago semanal de $120, amount=120 y
+   mensual≈520 — mostrar solo el primero infla el "me queda para gastar" en
+   cientos de dólares sin que nada avise. */
 function pagosDelMes(m){
-  const rec = state.recurring.filter(r=>(r.type||"gasto")==="gasto").map(r=>({id:r.id,name:r.name,amount:+r.amount||0,dueDay:r.dueDay||1,paid:(r.paid||[]).includes(m),source:"rec"}));
-  const deu = deudasPagables().map(a=>({id:a.id,name:a.name,amount:+a.payment||0,dueDay:a.dueDay||1,paid:(a.paid||[]).includes(m),source:"deuda"}));
+  const rec = state.recurring.filter(r=>(r.type||"gasto")==="gasto").map(r=>({
+    id:r.id, name:r.name, amount:+r.amount||0, mensual:expectedMensual(r),
+    freq:r.freq||"mensual", dueDay:r.dueDay||1, paid:(r.paid||[]).includes(m), source:"rec"
+  }));
+  const deu = deudasPagables().map(a=>({
+    id:a.id, name:a.name, amount:+a.payment||0, mensual:+a.payment||0,
+    freq:"mensual", dueDay:a.dueDay||1, paid:(a.paid||[]).includes(m), source:"deuda"
+  }));
   return rec.concat(deu).sort((x,y)=>x.dueDay-y.dueDay);
 }
-function pagosPendientes(m){ return pagosDelMes(m).filter(p=>!p.paid).reduce((s,p)=>s+p.amount,0); }
+function pagosPendientes(m){ return pagosDelMes(m).filter(p=>!p.paid).reduce((s,p)=>s+p.mensual,0); }
 /* ============ Lo que ya tiene dueño ============
    Un gasto recurrente y el mínimo de una deuda no son "presupuesto": ya están
    decididos. Cada seccion miraba solo una mitad del plan —Plan sumaba los
@@ -833,7 +886,7 @@ function viewPagos(){
   const deudas = deudasPagables().slice().sort((a,b)=>(a.dueDay||31)-(b.dueDay||31));
   const recsGasto = state.recurring.filter(r=>(r.type||"gasto")==="gasto").sort((a,b)=>a.dueDay-b.dueDay);
   const pend = pagosPendientes(SEL);
-  const totFijos = recsGasto.reduce((s,r)=>s+r.amount,0) + deudas.reduce((s,a)=>s+(+a.payment||0),0);
+  const totFijos = recsGasto.reduce((s,r)=>s+expectedMensual(r),0) + deudas.reduce((s,a)=>s+(+a.payment||0),0);
   return `
     <div class="grid2">
       <div class="stat"><div class="k">Total mensual a pagar</div><div class="v cream num">${money(totFijos)}</div></div>
@@ -869,7 +922,7 @@ function viewPagos(){
           <div class="ic" style="color:${c.color}">◷</div>
           <div class="body">
             <div class="t1">${esc(r.name)}</div>
-            <div class="t2">Vence día ${r.dueDay} · ${esc(c.name)}</div>
+            <div class="t2">Vence día ${r.dueDay} · ${esc(c.name)}${(r.freq&&r.freq!=="mensual")?` · ${freqLabel(r.freq)} · ≈${money(expectedMensual(r))}/mes`:""}</div>
           </div>
           <div style="text-align:right;">
             <div class="amt num" style="color:var(--cream)">${money(r.amount)}</div>
@@ -970,9 +1023,9 @@ function viewPresupuesto(){
         <div class="row">
           <div class="body">
             <div class="t1">${esc(r.name)}</div>
-            <div class="t2">Vence día ${r.dueDay}${r.paid?" · ya pagado":""}</div>
+            <div class="t2">Vence día ${r.dueDay}${(r.freq&&r.freq!=="mensual")?` · ${money(r.amount)} ${freqLabel(r.freq)}`:""}${r.paid?" · ya pagado":""}</div>
           </div>
-          <div class="num" style="color:${r.paid?'var(--cream-dim)':'var(--expense)'};font-weight:700;">${money(r.amount)}</div>
+          <div class="num" style="color:${r.paid?'var(--cream-dim)':'var(--expense)'};font-weight:700;">${money(r.mensual)}</div>
           <button class="del" onclick="${r.source==="deuda"?`openAccount('${r.id}')`:`editRec('${r.id}')`}" aria-label="Editar">✎</button>
         </div>`).join("")}
       <div class="row" style="border-top:1px solid var(--champagne-line);">
@@ -1337,14 +1390,17 @@ function setRecType(t,preCat,preFreq){ recType=t;
   const sel=document.getElementById("rCat");
   const list=t==="gasto"?gastoCats():ingresoCats();
   sel.innerHTML=list.map(c=>`<option value="${c.id}" ${preCat===c.id?"selected":""}>${esc(c.name)}</option>`).join("");
+  // La frecuencia también para los GASTOS. Antes solo la tenían los ingresos y
+  // todo pago fijo se guardaba como "mensual": una guardería de $120 semanales
+  // se contaba como $120 al mes en vez de ~$520, y el "me queda para gastar"
+  // salía inflado en cientos de dólares sin que nada avisara.
   const extra=document.getElementById("rExtra");
-  if(t==="ingreso"){ const f=preFreq||(state.profile&&state.profile.payFreq)||"mensual";
-    extra.innerHTML=`<div class="field"><label>Frecuencia de pago</label><select id="rFreq">
+  const f=preFreq||(t==="ingreso"?((state.profile&&state.profile.payFreq)||"mensual"):"mensual");
+  extra.innerHTML=`<div class="field"><label>${t==="ingreso"?"Frecuencia de pago":"Cada cuánto se paga"}</label><select id="rFreq">
       <option value="semanal" ${f==="semanal"?"selected":""}>Semanal</option>
       <option value="quincenal" ${f==="quincenal"?"selected":""}>Cada 2 semanas (bi-weekly)</option>
       <option value="mensual" ${f==="mensual"?"selected":""}>Mensual</option>
     </select></div>`;
-  } else extra.innerHTML="";
 }
 function editRec(id){ openRec(null,id); }
 function saveRec(){
@@ -1352,7 +1408,7 @@ function saveRec(){
   const amount=parseFloat(document.getElementById("rAmount").value);
   const day=Math.min(31,Math.max(1,parseInt(document.getElementById("rDay").value)||1));
   if(!name||!amount||amount<=0){ toast("Completa nombre y monto"); return; }
-  const freq = recType==="ingreso" ? ((document.getElementById("rFreq")||{}).value||"mensual") : "mensual";
+  const freq = (document.getElementById("rFreq")||{}).value||"mensual";
   const data={type:recType,name,amount,dueDay:day,categoryId:document.getElementById("rCat").value,freq};
   if(editRecId){ Object.assign(state.recurring.find(x=>x.id===editRecId),data); }
   else state.recurring.push({id:uid(),paid:[],...data});
@@ -1836,10 +1892,24 @@ function recordatorioInicio(){
   if(!(state.profile&&state.profile.reminders)) return "";
   if(SEL!==curMonth()) return "";
   const hoy=new Date().getDate();
-  const prox=pagosDelMes(SEL).filter(p=>!p.paid && p.dueDay>=hoy && (p.dueDay-hoy)<=5).sort((a,b)=>a.dueDay-b.dueDay)[0];
-  if(!prox) return "";
-  const dias=prox.dueDay-hoy;
-  return `<div style="background:rgba(216,166,87,.12);border:1px solid rgba(216,166,87,.4);border-radius:12px;padding:11px 14px;margin-bottom:12px;font-size:13px;color:var(--warn);">⏰ <b>${esc(prox.name)}</b> vence ${dias===0?'hoy':('en '+dias+(dias===1?' día':' días'))} · ${money(prox.amount)}</div>`;
+  // Lo VENCIDO manda sobre lo próximo. Antes el filtro pedía dueDay>=hoy, así
+  // que un pago se avisaba hasta el día que vencía y al día siguiente
+  // desaparecía — justo cuando ya hay recargo y sí urge avisar.
+  const pend=pagosDelMes(SEL).filter(p=>!p.paid);
+  const vencido=pend.filter(p=>p.dueDay<hoy).sort((a,b)=>a.dueDay-b.dueDay)[0];
+  const prox=pend.filter(p=>p.dueDay>=hoy && (p.dueDay-hoy)<=5).sort((a,b)=>a.dueDay-b.dueDay)[0];
+  const p=vencido||prox;
+  if(!p) return "";
+
+  const dias = p.dueDay-hoy;
+  const rojo = !!vencido;
+  const txt = rojo
+    ? `venció hace ${hoy-p.dueDay}${(hoy-p.dueDay)===1?' día':' días'}`
+    : (dias===0?'vence hoy':('vence en '+dias+(dias===1?' día':' días')));
+  const col = rojo ? "var(--expense)" : "var(--warn)";
+  const bg  = rojo ? "rgba(217,142,128,.12)" : "rgba(216,166,87,.12)";
+  const bd  = rojo ? "rgba(217,142,128,.45)" : "rgba(216,166,87,.4)";
+  return `<div style="background:${bg};border:1px solid ${bd};border-radius:12px;padding:11px 14px;margin-bottom:12px;font-size:13px;color:${col};">${rojo?"⚠️":"⏰"} <b>${esc(p.name)}</b> ${txt} · ${money(p.amount)}</div>`;
 }
 
 /* ============ Revisión del perfil ============
@@ -2626,10 +2696,13 @@ async function loadCloud(){
   PERSONAL=financesOf(pd); MODE="personal"; HH=null; state=pd;
   if(pd.profile.household){
     try{
-      const {data:hd}=await sb.from("household_data").select("data").eq("household_id",pd.profile.household).maybeSingle();
-      if(hd && hd.data){ state=Object.assign({profile:pd.profile}, financesOf(normalizeState(hd.data))); MODE="household"; HH=pd.profile.household; }
-      else { pd.profile.household=null; }
-    }catch(e){ pd.profile.household=null; }
+      const {data:hd}=await sb.from("household_data").select("data, updated_at").eq("household_id",pd.profile.household).maybeSingle();
+      if(hd && hd.data){
+        state=Object.assign({profile:pd.profile}, financesOf(normalizeState(hd.data)));
+        MODE="household"; HH=pd.profile.household; HH_TS=hd.updated_at;
+      }
+      else { pd.profile.household=null; HH_TS=null; }
+    }catch(e){ pd.profile.household=null; HH_TS=null; }
   }
   if(isNew) await pushCloud();
   try{ await loadSub(); }catch(e){}

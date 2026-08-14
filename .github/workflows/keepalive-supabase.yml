@@ -1,0 +1,57 @@
+name: Keep Supabase Alive
+
+# Supabase Free pausa proyectos sin actividad por 7+ días. Ya nos pasó: el
+# 13-ago-2026 Aurova llevaba días con la base apagada — la app cargaba (Vercel
+# sirve el HTML) pero login, datos, Stripe e IA no respondían. Nadie se entera
+# hasta que alguien intenta entrar.
+#
+# Dos pings al día dan ~14 oportunidades dentro de la ventana de 7 días, así
+# que un ping fallido no tumba el proyecto. Mismo patrón que quantum-platform.
+# La key publishable es pública por diseño (Supabase la expone en el cliente).
+# Al pasar a plan Pro este workflow se puede desactivar.
+
+on:
+  schedule:
+    - cron: "0 8,20 * * *"
+  workflow_dispatch: # trigger manual desde la UI de GitHub
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Supabase REST endpoint
+        env:
+          SUPABASE_URL: https://ljkfwgoqpwfckhqhklhi.supabase.co
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_GXR-AcSo1_hOq2KX8aanGQ_Z8Rax1iI
+        run: |
+          set -e
+          echo "Pinging Supabase REST endpoint..."
+
+          RESPONSE=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            --max-time 30 \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_PUBLISHABLE_KEY" \
+            "$SUPABASE_URL/rest/v1/promo_codes?select=code&limit=1")
+
+          echo "HTTP response code: $RESPONSE"
+          cat /tmp/response.txt; echo ""
+
+          # 200 (datos) y 401/403 (RLS bloquea) significan lo mismo aquí: la
+          # base está despierta. Solo preocupan 5xx o timeout.
+          if [ "$RESPONSE" -ge 500 ] || [ "$RESPONSE" = "000" ]; then
+            echo "::error::Supabase no respondió (HTTP $RESPONSE)"
+            exit 1
+          fi
+
+          echo "✓ Supabase despierta (HTTP $RESPONSE)"
+
+      - name: Ping la app
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://aurova-lovat.vercel.app)
+          echo "App HTTP: $RESPONSE"
+          if [ "$RESPONSE" != "200" ]; then
+            echo "::warning::La app devolvió $RESPONSE (se esperaba 200)"
+          else
+            echo "✓ App arriba"
+          fi
