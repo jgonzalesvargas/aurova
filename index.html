@@ -425,6 +425,19 @@ const TR_EN = {
   "antes y te ahorras":"sooner and save",
   "en intereses.":"in interest.",
   "Escribe una cantidad para ver cuánto tiempo y cuánto dinero te ahorras.":"Enter an amount to see how much time and money you save.",
+  // Plan y compromisos unificados
+  "Te queda libre este mes":"What's actually left this month",
+  "después de todo lo que ya tiene dueño":"after everything that's already spoken for",
+  "Ingreso planeado":"Planned income",
+  "Ya comprometido":"Already committed",
+  "Presupuesto extra":"Extra budget",
+  "Total comprometido":"Total committed",
+  "Sale solo de tus pagos fijos y los mínimos de tus deudas — no hace falta escribirlo aquí. Si cambias un pago en":"This comes straight from your fixed bills and debt minimums — no need to type it here. If you change a payment in",
+  "este número se mueve contigo.":"this number moves with you.",
+  "Gasto que sí decides":"Spending you actually choose",
+  "Aquí va lo variable — lo que no está ya comprometido arriba. Ponle un límite a lo que se te suele ir sin darte cuenta.":"This is the variable part — whatever isn't already committed above. Put a cap on what tends to slip away.",
+  "Límite que te pusiste":"Cap you set",
+  "Ingresos (esperado)":"Income (expected)",
   "El orden a seguir":"The order to follow",
   "queda libre en":"paid off",
   "Deuda total:":"Total debt:",
@@ -562,7 +575,40 @@ function pagosDelMes(m){
   return rec.concat(deu).sort((x,y)=>x.dueDay-y.dueDay);
 }
 function pagosPendientes(m){ return pagosDelMes(m).filter(p=>!p.paid).reduce((s,p)=>s+p.amount,0); }
-function meQueda(m){ return ingresosMes(m) - gastosMes(m) - pagosPendientes(m) - aportesMetasMes(m); }
+/* ============ Lo que ya tiene dueño ============
+   Un gasto recurrente y el mínimo de una deuda no son "presupuesto": ya están
+   decididos. Cada seccion miraba solo una mitad del plan —Plan sumaba los
+   ingresos planeados e ignoraba los compromisos; Inicio hacia exactamente lo
+   contrario— y el mismo mes se veia con dinero de sobra en una pestaña y en
+   numeros rojos en la otra. Estas dos funciones son la mitad que le faltaba a
+   cada una.
+*/
+function catDeudasId(){
+  const c = state.categories.find(x=>x.kind==="gasto" && x.name==="Deudas");
+  return c ? c.id : "_deudas";
+}
+/** Gasto ya comprometido del mes, por categoría: recurrentes + mínimos de deuda. */
+function comprometidoPorCat(){
+  const out={};
+  state.recurring.filter(r=>(r.type||"gasto")==="gasto").forEach(r=>{
+    const k=r.categoryId||"_otros"; out[k]=(out[k]||0)+expectedMensual(r);
+  });
+  const kd=catDeudasId();
+  deudasPagables().forEach(a=>{ out[kd]=(out[kd]||0)+(+a.payment||0); });
+  return out;
+}
+function comprometidoTotal(){ return Object.values(comprometidoPorCat()).reduce((s,v)=>s+v,0); }
+
+/** Ingreso que YA sabes que entra: lo recibido más lo que falta de tus
+    ingresos planeados. Sin esto, el día 1 del mes Inicio mostraba en rojo todo
+    lo que debes y cero de lo que ganas, aunque el sueldo estuviera planeado. */
+function ingresoEsperado(m){
+  return ingresosMes(m) + state.recurring
+    .filter(r=>r.type==="ingreso")
+    .reduce((s,r)=>s+Math.max(0, expectedMensual(r)-recibidoDe(r,m)), 0);
+}
+
+function meQueda(m){ return ingresoEsperado(m) - gastosMes(m) - pagosPendientes(m) - aportesMetasMes(m); }
 
 /* ============ Render principal ============ */
 function render(){
@@ -590,7 +636,7 @@ function renderTabs(){
 
 /* ============ VISTA: INICIO ============ */
 function viewInicio(){
-  const q = meQueda(SEL), ing=ingresosMes(SEL), gas=gastosMes(SEL), pend=pagosPendientes(SEL), met=aportesMetasMes(SEL);
+  const q = meQueda(SEL), ing=ingresosMes(SEL), ingEsp=ingresoEsperado(SEL), gas=gastosMes(SEL), pend=pagosPendientes(SEL), met=aportesMetasMes(SEL);
   const pagosProx = pagosDelMes(SEL).filter(p=>!p.paid).slice(0,3);
   const hayPagos = state.recurring.some(r=>(r.type||"gasto")==="gasto") || deudasPagables().length;
   // gastos por categoria
@@ -610,7 +656,7 @@ function viewInicio(){
       <div class="sub">${mesLabel(SEL)} · después de gastos, metas y pagos pendientes</div>
     </div>
     <div class="grid2">
-      <div class="stat"><div class="k">Ingresos</div><div class="v income num">${money(ing)}</div></div>
+      <div class="stat"><div class="k">Ingresos ${ingEsp>ing?"(esperado)":""}</div><div class="v income num">${money(ingEsp)}</div></div>
       <div class="stat"><div class="k">Gastos</div><div class="v expense num">${money(gas)}</div></div>
       <div class="stat"><div class="k">A metas</div><div class="v champ num">${money(met)}</div></div>
       <div class="stat"><div class="k">Pagos pendientes</div><div class="v cream num">${money(pend)}</div></div>
@@ -817,17 +863,42 @@ function viewPresupuesto(){
     return {c,limit,spent};
   });
   const totLim = rows.reduce((s,r)=>s+r.limit,0), totSpent=rows.reduce((s,r)=>s+r.spent,0);
-  const diff = planIngreso - totLim, hasInc = incomes.length>0;
+  // Lo comprometido entra al plan solo: son tus recurrentes y los minimos de
+  // tus deudas, que ya estan decididos. Antes el plan los ignoraba y decia que
+  // te sobraba todo el sueldo.
+  const comp = comprometidoPorCat();
+  const totComp = comprometidoTotal();
+  const diff = planIngreso - totComp - totLim, hasInc = incomes.length>0;
+  const compRows = Object.entries(comp).filter(([,v])=>v>0)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([k,v])=>({nombre: k==="_otros" ? "Otros gastos" : catById(k).name, monto:v}));
   return `
     <div class="hero" style="text-align:left;padding:20px;">
-      <div class="lbl">Plan del mes</div>
+      <div class="lbl">Te queda libre este mes</div>
       <div class="big num" style="font-size:clamp(30px,9vw,42px);color:${!hasInc?'var(--champagne)':(diff>=0?'var(--income)':'var(--expense)')}">${hasInc?money(diff):"—"}</div>
-      <div class="sub">${!hasInc?'Agrega tus ingresos para armar tu plan':(diff>=0?'te sobraría si cumples el plan':'tu plan gasta más de lo que ganas')}</div>
+      <div class="sub">${!hasInc?'Agrega tus ingresos para armar tu plan':(diff>=0?'después de todo lo que ya tiene dueño':'tu plan gasta más de lo que ganas')}</div>
       <div style="display:flex;gap:20px;margin-top:14px;font-size:12px;flex-wrap:wrap;">
         <span class="muted">Ingreso planeado&nbsp; <b class="num" style="color:var(--income)">${money(planIngreso)}</b></span>
-        <span class="muted">Gasto planeado&nbsp; <b class="num" style="color:var(--cream)">${money(totLim)}</b></span>
+        <span class="muted">Ya comprometido&nbsp; <b class="num" style="color:var(--expense)">${money(totComp)}</b></span>
+        ${totLim?`<span class="muted">Presupuesto extra&nbsp; <b class="num" style="color:var(--cream)">${money(totLim)}</b></span>`:""}
       </div>
     </div>
+
+    ${compRows.length?`
+    <div class="head-row"><h2 class="section-title">Ya comprometido</h2></div>
+    <div class="card">
+      ${compRows.map(r=>`
+        <div class="row">
+          <div class="body"><div class="t1">${esc(r.nombre)}</div></div>
+          <div class="num" style="color:var(--expense);font-weight:700;">${money(r.monto)}</div>
+        </div>`).join("")}
+      <div class="row" style="border-top:1px solid var(--champagne-line);">
+        <div class="body"><div class="t1" style="color:var(--champagne);">Total comprometido</div></div>
+        <div class="num" style="color:var(--champagne);font-weight:800;">${money(totComp)}</div>
+      </div>
+    </div>
+    <p class="muted" style="font-size:12px;margin:8px 2px 0;">Sale solo de tus pagos fijos y los mínimos de tus deudas — no hace falta escribirlo aquí. Si cambias un pago en <b style="color:var(--champagne)">Pagos</b>, este número se mueve contigo.</p>
+    `:""}
 
     <div class="head-row"><h2 class="section-title">Ingresos planeados</h2><button class="btn sm" onclick="openRec('ingreso')">+ Agregar</button></div>
     <div class="card">
@@ -846,9 +917,10 @@ function viewPresupuesto(){
     </div>
     <p class="muted" style="font-size:12px;margin:8px 2px 0;">Toca <b style="color:var(--champagne)">Recibir</b> cada vez que te paguen — registra el ingreso real de ese día.</p>
 
-    <div class="head-row"><h2 class="section-title">Gasto planeado</h2></div>
+    <div class="head-row"><h2 class="section-title">Gasto que sí decides</h2></div>
+    <p class="muted" style="font-size:12px;margin:-4px 2px 10px;">Aquí va lo variable — lo que no está ya comprometido arriba. Ponle un límite a lo que se te suele ir sin darte cuenta.</p>
     <div class="grid2">
-      <div class="stat"><div class="k">Presupuesto total</div><div class="v cream num">${money(totLim)}</div></div>
+      <div class="stat"><div class="k">Límite que te pusiste</div><div class="v cream num">${money(totLim)}</div></div>
       <div class="stat"><div class="k">Gastado</div><div class="v ${totSpent>totLim&&totLim?'expense':'champ'} num">${money(totSpent)}</div></div>
     </div>
     <div class="card">
