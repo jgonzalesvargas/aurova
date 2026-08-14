@@ -425,7 +425,19 @@ const TR_EN = {
   "antes y te ahorras":"sooner and save",
   "en intereses.":"in interest.",
   "Escribe una cantidad para ver cuánto tiempo y cuánto dinero te ahorras.":"Enter an amount to see how much time and money you save.",
+  // Revisión del perfil
+  "Para que los números te cuadren":"So your numbers add up",
+  "Tu patrimonio sale mucho más bajo de lo real.":"Your net worth shows far lower than it really is.",
+  "límite de crédito. Sin eso no podemos decirte cuánto del cupo estás usando.":"credit limit. Without it we can't tell you how much of your line you're using.",
+  "Todas tus deudas vencen el mismo día. Pon la fecha real de cada una para que los recordatorios sirvan.":"All your debts are due the same day. Set each real due date so the reminders actually help.",
+  "libres este mes y no tienes ninguna meta. El dinero sin destino se gasta solo.":"free this month and no goal set. Money without a destination spends itself.",
+  "Agregarlo":"Add it", "Ponerlo":"Set it", "Ajustar":"Adjust", "Crear meta":"Create goal",
   // Plan y compromisos unificados
+  "El tope es para TODA la categoría. La parte dorada es lo que ya es fijo — el resto es tu margen. La barra se pone roja si te pasas.":"The cap covers the WHOLE category. The gold part is what's already fixed — the rest is your room. The bar turns red if you go over.",
+  "ya es fijo":"is already fixed",
+  "de margen":"of room",
+  "Según tu plan del mes te quedan libres":"Your monthly plan leaves you",
+  "Ya está puesto aquí — bájalo si no todo puede ir a las deudas.":"It's already filled in — lower it if not all of it can go to debt.",
   "Te queda libre este mes":"What's actually left this month",
   "después de todo lo que ya tiene dueño":"after everything that's already spoken for",
   "Ingreso planeado":"Planned income",
@@ -647,6 +659,7 @@ function viewInicio(){
 
   return `
     ${recordatorioInicio()}
+    ${revisionInicio()}
     ${MODE==="household"?`<div style="display:inline-block;background:rgba(201,169,106,.12);border:1px solid var(--champagne-line);border-radius:999px;padding:3px 12px;font-size:11px;color:var(--champagne);margin-bottom:10px;">👫 Cuenta conjunta</div>`:""}
     ${state.profile&&state.profile.name?`<div style="font-family:var(--serif);color:var(--cream);font-size:18px;margin:0 0 4px;">Hola, ${esc(state.profile.name)} 👋</div>`:""}
     ${state.profile&&state.profile.goal&&goalTip(state.profile.goal)?`<div class="muted" style="font-size:12.5px;margin:0 0 12px;">💡 ${goalTip(state.profile.goal)}</div>`:""}
@@ -857,18 +870,22 @@ function viewPresupuesto(){
   const incomes = state.recurring.filter(r=>r.type==="ingreso").sort((a,b)=>(a.dueDay||1)-(b.dueDay||1));
   const planIngreso = incomes.reduce((s,r)=>s+expectedMensual(r),0);
   const gc = gastoCats();
+  const compCat = comprometidoPorCat();
   const rows = gc.map(c=>{
     const limit = state.budgets[c.id]||0;
     const spent = txnsOf(SEL).filter(t=>t.type==="gasto"&&t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
-    return {c,limit,spent};
+    return {c,limit,spent,comp:compCat[c.id]||0};
   });
-  const totLim = rows.reduce((s,r)=>s+r.limit,0), totSpent=rows.reduce((s,r)=>s+r.spent,0);
-  // Lo comprometido entra al plan solo: son tus recurrentes y los minimos de
-  // tus deudas, que ya estan decididos. Antes el plan los ignoraba y decia que
-  // te sobraba todo el sueldo.
+  const totSpent=rows.reduce((s,r)=>s+r.spent,0);
+  // Lo comprometido cuenta CONTRA el límite de su categoría, no encima.
+  // Si pones $1,000 de tope a Renta y ya tienes $850 de renta fija, tu plan de
+  // vivienda es $1,000 — no $1,850. Sumarlos hacía que la app inventara gasto
+  // que no existe en cuanto alguien ponía un tope a algo que ya era fijo.
   const comp = comprometidoPorCat();
   const totComp = comprometidoTotal();
-  const diff = planIngreso - totComp - totLim, hasInc = incomes.length>0;
+  const totPlan = rows.reduce((s,r)=>s+Math.max(r.limit, r.comp), 0)
+                + Object.entries(comp).filter(([k])=>!gc.some(c=>c.id===k)).reduce((s,[,v])=>s+v,0);
+  const diff = planIngreso - totPlan, hasInc = incomes.length>0;
   const compRows = Object.entries(comp).filter(([,v])=>v>0)
     .sort((a,b)=>b[1]-a[1])
     .map(([k,v])=>({nombre: k==="_otros" ? "Otros gastos" : catById(k).name, monto:v}));
@@ -880,7 +897,7 @@ function viewPresupuesto(){
       <div style="display:flex;gap:20px;margin-top:14px;font-size:12px;flex-wrap:wrap;">
         <span class="muted">Ingreso planeado&nbsp; <b class="num" style="color:var(--income)">${money(planIngreso)}</b></span>
         <span class="muted">Ya comprometido&nbsp; <b class="num" style="color:var(--expense)">${money(totComp)}</b></span>
-        ${totLim?`<span class="muted">Presupuesto extra&nbsp; <b class="num" style="color:var(--cream)">${money(totLim)}</b></span>`:""}
+        <span class="muted">Gasto planeado&nbsp; <b class="num" style="color:var(--cream)">${money(totPlan)}</b></span>
       </div>
     </div>
 
@@ -924,21 +941,28 @@ function viewPresupuesto(){
       <div class="stat"><div class="k">Gastado</div><div class="v ${totSpent>totLim&&totLim?'expense':'champ'} num">${money(totSpent)}</div></div>
     </div>
     <div class="card">
-      ${rows.map(({c,limit,spent})=>{
-        const p = limit? Math.min(100,spent/limit*100):0; const over = limit && spent>limit;
+      ${rows.map(({c,limit,spent,comp})=>{
+        // Lo fijo de la categoría ya consume parte del tope. Se muestra dentro
+        // de la barra para que se vea cuánto margen real queda.
+        const usado = comp + spent;
+        const p = limit? Math.min(100,usado/limit*100):0;
+        const pComp = limit? Math.min(100,comp/limit*100):0;
+        const over = limit && usado>limit;
+        const libre = limit? limit-usado : 0;
         return `
         <div class="row" style="display:block;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span class="t1" style="font-size:14px;">${esc(c.name)}</span>
             <span style="display:flex;align-items:center;gap:8px;">
-              <span class="t2 num" style="color:${over?'var(--expense)':'var(--cream-dim)'}">${money(spent)} / ${limit?money(limit):"—"}</span>
+              <span class="t2 num" style="color:${over?'var(--expense)':'var(--cream-dim)'}">${money(usado)} / ${limit?money(limit):"—"}</span>
               <button class="btn ghost sm" onclick="openBudget('${c.id}')">${limit?"Editar":"Poner"}</button>
             </span>
           </div>
-          ${limit?`<div class="bar ${over?'over':''}"><span style="width:${p}%"></span></div>`:""}
+          ${limit?`<div class="bar ${over?'over':''}" style="position:relative;"><span style="width:${p}%"></span>${comp?`<i style="position:absolute;left:0;top:0;bottom:0;width:${pComp}%;background:rgba(201,169,106,.35);border-radius:inherit;"></i>`:""}</div>`:""}
+          ${comp?`<div class="t2" style="margin-top:4px;">${money(comp)} ya es fijo${limit?` · te quedan ${money(Math.max(0,libre))} de margen`:""}</div>`:""}
         </div>`}).join("")}
     </div>
-    <p class="muted" style="font-size:12px;margin-top:12px;">Define cuánto quieres gastar como máximo en cada categoría. La barra se pone roja si te pasas.</p>`;
+    <p class="muted" style="font-size:12px;margin-top:12px;">El tope es para TODA la categoría. La parte dorada es lo que ya es fijo — el resto es tu margen. La barra se pone roja si te pasas.</p>`;
 }
 
 /* ============ Acciones ============ */
@@ -1073,7 +1097,15 @@ function fechaEnMeses(n){
 
 let PLAN_EXTRA=0, PLAN_ESTRATEGIA="avalancha";
 
-function openPlanDeudas(){ PLAN_EXTRA=0; PLAN_ESTRATEGIA="avalancha"; pintarPlanDeudas(); }
+// Arranca con lo que REALMENTE te sobra este mes, no con cero. Preguntar
+// "¿y si aportas extra?" a alguien que ya tiene el excedente calculado en otra
+// pestaña es hacerle teclear un dato que la app ya conoce — y la mayoría nunca
+// lo escribe, así que nunca ve el número que le habría cambiado la decisión.
+function openPlanDeudas(){
+  PLAN_EXTRA = Math.max(0, Math.floor(meQueda(SEL)/10)*10);
+  PLAN_ESTRATEGIA="avalancha";
+  pintarPlanDeudas();
+}
 
 function planExtraInput(v){ PLAN_EXTRA=Math.max(0,parseFloat(v)||0); pintarPlanDeudas(); }
 function planEstrategia(e){ PLAN_ESTRATEGIA=e; pintarPlanDeudas(); }
@@ -1097,6 +1129,7 @@ function pintarPlanDeudas(){
   const mesesGanados = base.meses - conExtra.meses;
   const interesAhorrado = base.interes - conExtra.interes;
   const totalDeuda = deudasPagables().reduce((s,a)=>s+(+a.value||0),0);
+  const libreMes = Math.max(0, meQueda(SEL));
 
   modal(`
     <div style="text-align:center;">
@@ -1127,6 +1160,7 @@ function pintarPlanDeudas(){
       ${PLAN_EXTRA>0 && mesesGanados>0
         ? `<div style="margin-top:8px;font-size:14px;color:var(--champagne);">Con ${money(PLAN_EXTRA)} más al mes sales <b>${mesesGanados} mes${mesesGanados>1?"es":""} antes</b> y te ahorras <b>${money(interesAhorrado)}</b> en intereses.</div>`
         : `<div class="muted" style="margin-top:8px;font-size:12.5px;">Escribe una cantidad para ver cuánto tiempo y cuánto dinero te ahorras.</div>`}
+      ${libreMes>0?`<div class="t2" style="margin-top:6px;">Según tu plan del mes te quedan libres ${money(libreMes)}. Ya está puesto aquí — bájalo si no todo puede ir a las deudas.</div>`:""}
     </div>
 
     <div style="font-weight:700;color:var(--cream);margin:0 2px 8px;">El orden a seguir</div>
@@ -1740,6 +1774,62 @@ function recordatorioInicio(){
   if(!prox) return "";
   const dias=prox.dueDay-hoy;
   return `<div style="background:rgba(216,166,87,.12);border:1px solid rgba(216,166,87,.4);border-radius:12px;padding:11px 14px;margin-bottom:12px;font-size:13px;color:var(--warn);">⏰ <b>${esc(prox.name)}</b> vence ${dias===0?'hoy':('en '+dias+(dias===1?' día':' días'))} · ${money(prox.amount)}</div>`;
+}
+
+/* ============ Revisión del perfil ============
+   Los datos que faltan no avisan solos: la app simplemente calcula mal y el
+   usuario no sabe por qué. El caso claro es el patrimonio — quien registra el
+   préstamo del carro pero no el carro ve su patrimonio decenas de miles por
+   debajo de la realidad y concluye que la app está rota.
+   Cada aviso dice qué falta, POR QUÉ importa, y lleva al lugar donde se
+   arregla. Solo se muestran los que aplican; con el perfil completo, nada.
+*/
+function revisarPerfil(){
+  const avisos=[];
+  const act=state.accounts.filter(a=>a.kind==="activo");
+  const pas=state.accounts.filter(a=>a.kind==="pasivo");
+
+  // 1. Préstamo de un bien, sin el bien. Rompe el patrimonio neto.
+  const prestamosBien = pas.filter(a=>a.type==="Préstamo de auto"||a.type==="Hipoteca");
+  const activosBien   = act.filter(a=>a.type==="Vehículo"||a.type==="Bienes raíces");
+  if(prestamosBien.length > activosBien.length){
+    const falta = prestamosBien.length - activosBien.length;
+    avisos.push({ic:"🚗",txt:`Tienes ${falta===1?"un préstamo":falta+" préstamos"} de un bien pero no registraste el bien. Tu patrimonio sale mucho más bajo de lo real.`,
+                 cta:"Agregarlo", act:"go('analisis')"});
+  }
+  // 2. Tarjeta sin límite: sin eso no hay uso de crédito, que es lo que más
+  //    mueve el puntaje.
+  const sinLim = pas.filter(a=>a.type==="Tarjeta de crédito" && !(+a.limit>0));
+  if(sinLim.length){
+    avisos.push({ic:"💳",txt:`${sinLim.length===1?"Una tarjeta no tiene":sinLim.length+" tarjetas no tienen"} límite de crédito. Sin eso no podemos decirte cuánto del cupo estás usando.`,
+                 cta:"Ponerlo", act:"go('analisis')"});
+  }
+  // 3. Todos los vencimientos el mismo día = casi seguro nadie los configuró.
+  const conPago = deudasPagables();
+  if(conPago.length>2 && conPago.every(a=>(a.dueDay||1)===(conPago[0].dueDay||1))){
+    avisos.push({ic:"📅",txt:"Todas tus deudas vencen el mismo día. Pon la fecha real de cada una para que los recordatorios sirvan.",
+                 cta:"Ajustar", act:"go('pagos')"});
+  }
+  // 4. Le sobra dinero cada mes y no tiene a dónde mandarlo.
+  const libre = meQueda(SEL);
+  if(!state.goals.length && libre>100){
+    avisos.push({ic:"🎯",txt:`Te quedan ${money(libre)} libres este mes y no tienes ninguna meta. El dinero sin destino se gasta solo.`,
+                 cta:"Crear meta", act:"go('metas')"});
+  }
+  return avisos;
+}
+
+function revisionInicio(){
+  const a=revisarPerfil();
+  if(!a.length) return "";
+  return `<div class="card" style="margin-bottom:14px;border-color:var(--champagne-line);">
+    <div style="font-size:11.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--champagne);margin-bottom:8px;">Para que los números te cuadren</div>
+    ${a.map(x=>`<div class="row" style="padding:8px 0;">
+      <div class="ic">${x.ic}</div>
+      <div class="body"><div class="t2" style="font-size:13px;line-height:1.5;">${x.txt}</div></div>
+      <button class="btn ghost sm" onclick="${x.act}">${x.cta}</button>
+    </div>`).join("")}
+  </div>`;
 }
 
 /* ============ Perfil ============ */
