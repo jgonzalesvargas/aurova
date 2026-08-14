@@ -444,8 +444,9 @@ const TR_EN = {
   "Ya comprometido":"Already committed",
   "Presupuesto extra":"Extra budget",
   "Total comprometido":"Total committed",
-  "Sale solo de tus pagos fijos y los mínimos de tus deudas — no hace falta escribirlo aquí. Si cambias un pago en":"This comes straight from your fixed bills and debt minimums — no need to type it here. If you change a payment in",
-  "este número se mueve contigo.":"this number moves with you.",
+  "Son los mismos pagos de":"These are the same payments from",
+  "ordenados por fecha. Toca ✎ para cambiar el monto o el día — se actualiza en las dos pestañas.":"sorted by date. Tap ✎ to change the amount or the day — it updates in both tabs.",
+  "· ya pagado":"· already paid",
   "Gasto que sí decides":"Spending you actually choose",
   "Aquí va lo variable — lo que no está ya comprometido arriba. Ponle un límite a lo que se te suele ir sin darte cuenta.":"This is the variable part — whatever isn't already committed above. Put a cap on what tends to slip away.",
   "Límite que te pusiste":"Cap you set",
@@ -797,6 +798,7 @@ function viewPagos(){
           </div>
           ${pagado? `<button class="del" onclick="unpagarDeuda('${a.id}')" title="Deshacer pago">↺</button>`
                   : `<button class="btn ghost sm" onclick="pagarDeuda('${a.id}')">Pagar</button>`}
+          <button class="del" onclick="openAccount('${a.id}')" aria-label="Editar">✎</button>
         </div>`}).join("")
       : `<div class="empty"><div class="em-ic">↓</div>Sin deudas con pago mensual.<br><button class="linkbtn" onclick="go('analisis')">Agregar una deuda en Patrimonio</button></div>`}
     </div>
@@ -818,6 +820,7 @@ function viewPagos(){
           </div>
           ${pagado? `<button class="del" onclick="unpagarRec('${r.id}')" title="Marcar pendiente">↺</button>`
                   : `<button class="btn ghost sm" onclick="pagarRec('${r.id}')">Pagar</button>`}
+          <button class="del" onclick="editRec('${r.id}')" aria-label="Editar">✎</button>
           <button class="del" onclick="delRec('${r.id}')" aria-label="Eliminar">×</button>
         </div>`}).join("")
       : `<div class="empty"><div class="em-ic">◷</div>Sin pagos fijos. Agrega renta, servicios, suscripciones…</div>`}
@@ -887,9 +890,10 @@ function viewPresupuesto(){
   const totPlan = rows.reduce((s,r)=>s+Math.max(r.limit, r.comp), 0)
                 + Object.entries(comp).filter(([k])=>!gc.some(c=>c.id===k)).reduce((s,[,v])=>s+v,0);
   const diff = planIngreso - totPlan, hasInc = incomes.length>0;
-  const compRows = Object.entries(comp).filter(([,v])=>v>0)
-    .sort((a,b)=>b[1]-a[1])
-    .map(([k,v])=>({nombre: k==="_otros" ? "Otros gastos" : catById(k).name, monto:v}));
+  // Los mismos pagos de la pestaña Pagos, no una copia: misma fuente, mismo
+  // orden por día de vencimiento, y editables desde aquí. Ver el compromiso
+  // sin poder tocarlo obligaba a cambiar de pestaña para corregir una fecha.
+  const compRows = pagosDelMes(SEL);
   return `
     <div class="hero" style="text-align:left;padding:20px;">
       <div class="lbl">Te queda libre este mes</div>
@@ -907,15 +911,19 @@ function viewPresupuesto(){
     <div class="card">
       ${compRows.map(r=>`
         <div class="row">
-          <div class="body"><div class="t1">${esc(r.nombre)}</div></div>
-          <div class="num" style="color:var(--expense);font-weight:700;">${money(r.monto)}</div>
+          <div class="body">
+            <div class="t1">${esc(r.name)}</div>
+            <div class="t2">Vence día ${r.dueDay}${r.paid?" · ya pagado":""}</div>
+          </div>
+          <div class="num" style="color:${r.paid?'var(--cream-dim)':'var(--expense)'};font-weight:700;">${money(r.amount)}</div>
+          <button class="del" onclick="${r.source==="deuda"?`openAccount('${r.id}')`:`editRec('${r.id}')`}" aria-label="Editar">✎</button>
         </div>`).join("")}
       <div class="row" style="border-top:1px solid var(--champagne-line);">
         <div class="body"><div class="t1" style="color:var(--champagne);">Total comprometido</div></div>
         <div class="num" style="color:var(--champagne);font-weight:800;">${money(totComp)}</div>
       </div>
     </div>
-    <p class="muted" style="font-size:12px;margin:8px 2px 0;">Sale solo de tus pagos fijos y los mínimos de tus deudas — no hace falta escribirlo aquí. Si cambias un pago en <b style="color:var(--champagne)">Pagos</b>, este número se mueve contigo.</p>
+    <p class="muted" style="font-size:12px;margin:8px 2px 0;">Son los mismos pagos de <b style="color:var(--champagne)">Pagos</b>, ordenados por fecha. Toca ✎ para cambiar el monto o el día — se actualiza en las dos pestañas.</p>
     `:""}
 
     <div class="head-row"><h2 class="section-title">Ingresos planeados</h2><button class="btn sm" onclick="openRec('ingreso')">+ Agregar</button></div>
