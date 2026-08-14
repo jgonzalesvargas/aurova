@@ -877,6 +877,7 @@ function viewPresupuesto(){
     return {c,limit,spent,comp:compCat[c.id]||0};
   });
   const totSpent=rows.reduce((s,r)=>s+r.spent,0);
+  const totUsado=rows.reduce((s,r)=>s+r.comp+r.spent,0);
   // Lo comprometido cuenta CONTRA el límite de su categoría, no encima.
   // Si pones $1,000 de tope a Renta y ya tienes $850 de renta fija, tu plan de
   // vivienda es $1,000 — no $1,850. Sumarlos hacía que la app inventara gasto
@@ -937,8 +938,8 @@ function viewPresupuesto(){
     <div class="head-row"><h2 class="section-title">Gasto que sí decides</h2></div>
     <p class="muted" style="font-size:12px;margin:-4px 2px 10px;">Aquí va lo variable — lo que no está ya comprometido arriba. Ponle un límite a lo que se te suele ir sin darte cuenta.</p>
     <div class="grid2">
-      <div class="stat"><div class="k">Límite que te pusiste</div><div class="v cream num">${money(totLim)}</div></div>
-      <div class="stat"><div class="k">Gastado</div><div class="v ${totSpent>totLim&&totLim?'expense':'champ'} num">${money(totSpent)}</div></div>
+      <div class="stat"><div class="k">Gasto planeado</div><div class="v cream num">${money(totPlan)}</div></div>
+      <div class="stat"><div class="k">Va consumido</div><div class="v ${totUsado>totPlan&&totPlan?'expense':'champ'} num">${money(totUsado)}</div></div>
     </div>
     <div class="card">
       ${rows.map(({c,limit,spent,comp})=>{
