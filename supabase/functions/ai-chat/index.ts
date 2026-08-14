@@ -87,6 +87,19 @@ Deno.serve(async (req: Request) => {
       return json({ error: "premium_required" }, 402);
     }
 
+    // Tope diario, contado en la base de datos. Sin esto, una sola cuenta
+    // Premium (o un código VIP) puede llamar esto en bucle y quemar los
+    // créditos de Anthropic de Jesús — el gasto es suyo, no del usuario.
+    // Se cuenta ANTES de llamar a la API: si el usuario ya se pasó, no se
+    // gasta un centavo en averiguarlo.
+    const { data: cuota } = await admin.rpc("ia_consumir", { p_user: user.id, p_max: 30 });
+    if (cuota && cuota.ok === false) {
+      if (cuota.msg === "tope") {
+        return json({ error: "daily_limit", usos: cuota.usos, max: cuota.max }, 429);
+      }
+      return json({ error: "unauthorized" }, 401);
+    }
+
     const { context, question, lang } = await req.json();
     if (!question || String(question).trim().length === 0) return json({ error: "empty" });
     const idioma = lang === "en" ? "English" : "Spanish";

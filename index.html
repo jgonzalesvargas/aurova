@@ -403,7 +403,34 @@ const TR_EN = {
   "Aportar a":"Add to",
   "Hola,":"Hi,",
   "Ninguna":"None",
-  "‹ Volver":"‹ Back"
+  "‹ Volver":"‹ Back",
+  // Plan para salir de deudas. Frases largas y completas a propósito: tr() hace
+  // reemplazo por substring, así que una key corta como "meses" pisaría texto
+  // de otras pantallas.
+  "📉 Ver mi plan para salir de deudas":"📉 See my debt payoff plan",
+  "Tu plan para salir de deudas":"Your debt payoff plan",
+  "Plan de deudas":"Debt plan",
+  "Primero registra tus deudas con su saldo, interés y pago mensual.":"First add your debts with their balance, interest rate and monthly payment.",
+  "Con los pagos actuales, los intereses crecen más rápido que lo que abonas: estas deudas no se terminan de pagar nunca. Sube el pago mensual de la deuda con el interés más alto, o busca refinanciarla.":"At your current payments, interest grows faster than what you pay down: these debts never get paid off. Raise the monthly payment on the highest-rate debt, or look into refinancing it.",
+  "Sales libre en":"You're debt-free in",
+  "Intereses que vas a pagar en el camino:":"Interest you'll pay along the way:",
+  "Ahorrar más":"Save more",
+  "Ver avances antes":"See wins sooner",
+  "Atacas primero la deuda de interés más alto. Es la que menos intereses te cobra en total.":"You attack the highest-rate debt first. This costs you the least interest overall.",
+  "Atacas primero la deuda más chica. Tardas un poco más, pero ves desaparecer una deuda antes — si te cuesta mantener el ánimo, esta gana.":"You attack the smallest debt first. It takes a bit longer, but you see a debt disappear sooner — if staying motivated is the hard part, this one wins.",
+  "Esta te ahorra":"This saves you",
+  "frente a la otra.":"compared to the other one.",
+  "¿Y si le metes un poco más al mes?":"What if you put in a bit more each month?",
+  "más al mes sales":"more per month you finish",
+  "antes y te ahorras":"sooner and save",
+  "en intereses.":"in interest.",
+  "Escribe una cantidad para ver cuánto tiempo y cuánto dinero te ahorras.":"Enter an amount to see how much time and money you save.",
+  "El orden a seguir":"The order to follow",
+  "queda libre en":"paid off",
+  "Deuda total:":"Total debt:",
+  "Ponle todo lo que te sobre a la":"Put everything you can spare on the",
+  "primera de la lista":"first one on the list",
+  "y a las demás solo su pago mínimo. Cada vez que liquidas una, su pago se suma a la siguiente — por eso la última cae mucho más rápido que la primera.":"and only the minimum on the rest. Each time you clear one, its payment rolls into the next — that's why the last one falls much faster than the first."
 };
 const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
 function tr(html){
@@ -715,6 +742,7 @@ function viewPagos(){
       : `<div class="empty"><div class="em-ic">↓</div>Sin deudas con pago mensual.<br><button class="linkbtn" onclick="go('analisis')">Agregar una deuda en Patrimonio</button></div>`}
     </div>
     <p class="muted" style="font-size:12px;margin:8px 2px 0;">Al pagar una deuda se registra el gasto del mes, se descuenta el interés y <b style="color:var(--champagne)">baja tu saldo</b> — tu patrimonio sube.</p>
+    ${deudas.length? `<button class="btn block" style="margin-top:10px;" onclick="openPlanDeudas()">📉 Ver mi plan para salir de deudas</button>`:""}
 
     <div class="head-row"><h2 class="section-title">Otros pagos fijos</h2><button class="btn sm" onclick="openRec()">+ Agregar</button></div>
     <div class="card">
@@ -902,6 +930,149 @@ function confirmarPago(id){
   state.transactions.push({id:uid(),type:"ingreso",amount,categoryId:r.categoryId,date,note:r.name+" (pago)"});
   save(); closeModal(); toast("Ingreso registrado ✓"); render();
 }
+/* ============ Plan para salir de deudas ============
+   Simula mes a mes hasta que todas las deudas llegan a cero.
+
+   Las dos estrategias solo se diferencian en el ORDEN de ataque:
+     · avalancha  → primero la de interés más alto  = pagas menos intereses
+     · bola nieve → primero la de saldo más chico   = ves una deuda morir antes
+   En ambas, cuando una deuda se liquida su pago se suma a la siguiente (el
+   "efecto bola de nieve"). Ahí está casi toda la ganancia frente a pagar los
+   mínimos por separado, y es lo que casi nadie hace a mano.
+
+   Se simula, no se despeja con fórmula: con varias deudas, pagos que se
+   heredan y saldos que se cruzan, la fórmula cerrada no existe. Iterar por mes
+   es exacto y basta — 600 vueltas como techo por si algún dato imposible
+   (interés que supera al pago) haría el bucle infinito.
+*/
+const PLAN_MAX_MESES = 600;
+
+function simularDeudas(extra, estrategia){
+  let deudas = deudasPagables().map(a=>({
+    id:a.id, name:a.name,
+    saldo:+a.value||0, tasa:(+a.rate||0)/1200, pago:+a.payment||0
+  })).filter(d=>d.saldo>0 && d.pago>0);
+  if(!deudas.length) return null;
+
+  deudas.sort((a,b)=> estrategia==="avalancha" ? (b.tasa-a.tasa) : (a.saldo-b.saldo));
+  // El orden de ATAQUE se fija aquí y no cambia. Es distinto del orden en que
+  // las deudas se liquidan: una deuda chica puede morir sola con su mínimo
+  // antes que la que estás atacando. Al usuario hay que mostrarle el de ataque
+  // —es lo que tiene que hacer— con la fecha real de liquidación al lado.
+  const plan = deudas.map(d=>({name:d.name, tasa:d.tasa*1200, saldo:d.saldo, mes:null}));
+
+  let mes=0, interesTotal=0, liberado=0;
+
+  while(deudas.length && mes<PLAN_MAX_MESES){
+    mes++;
+    // El objetivo del mes es el primero de la lista: recibe su pago, más el
+    // de las deudas ya liquidadas, más lo extra que el usuario aporte.
+    let bono = liberado + extra;
+    for(let i=0;i<deudas.length;i++){
+      const d=deudas[i];
+      const interes = d.saldo*d.tasa;
+      interesTotal += interes;
+      d.saldo += interes;
+      let pago = d.pago + (i===0 ? bono : 0);
+      if(pago>d.saldo) pago=d.saldo;
+      d.saldo -= pago;
+    }
+    // Deudas que murieron este mes: su pago pasa a engordar el bono.
+    const vivas=[];
+    for(const d of deudas){
+      if(d.saldo<=0.01){
+        liberado += d.pago;
+        const p=plan.find(x=>x.name===d.name && x.mes===null); if(p) p.mes=mes;
+      }
+      else vivas.push(d);
+    }
+    deudas = vivas;
+  }
+
+  if(deudas.length) return {imposible:true};
+  return {meses:mes, interes:interesTotal, orden:plan};
+}
+
+function fechaEnMeses(n){
+  const d=new Date(); d.setMonth(d.getMonth()+n);
+  const mn=(LANG==="en"?MESES_EN:MESES)[d.getMonth()];
+  return mn+" "+d.getFullYear();
+}
+
+let PLAN_EXTRA=0, PLAN_ESTRATEGIA="avalancha";
+
+function openPlanDeudas(){ PLAN_EXTRA=0; PLAN_ESTRATEGIA="avalancha"; pintarPlanDeudas(); }
+
+function planExtraInput(v){ PLAN_EXTRA=Math.max(0,parseFloat(v)||0); pintarPlanDeudas(); }
+function planEstrategia(e){ PLAN_ESTRATEGIA=e; pintarPlanDeudas(); }
+
+function pintarPlanDeudas(){
+  const base = simularDeudas(0, PLAN_ESTRATEGIA);
+  if(!base){ modal(`<h3 style="font-family:var(--serif);color:var(--cream);">Plan de deudas</h3>
+    <p class="muted">Primero registra tus deudas con su saldo, interés y pago mensual.</p>
+    <button class="btn block" style="margin-top:12px;" onclick="closeModal()">Cerrar</button>`); return; }
+
+  if(base.imposible){
+    modal(`<h3 style="font-family:var(--serif);color:var(--cream);">Plan de deudas</h3>
+      <p class="muted">Con los pagos actuales, los intereses crecen más rápido que lo que abonas: estas deudas no se terminan de pagar nunca. Sube el pago mensual de la deuda con el interés más alto, o busca refinanciarla.</p>
+      <button class="btn block" style="margin-top:12px;" onclick="closeModal()">Cerrar</button>`);
+    return;
+  }
+
+  const conExtra = PLAN_EXTRA>0 ? simularDeudas(PLAN_EXTRA, PLAN_ESTRATEGIA) : base;
+  const otra = simularDeudas(PLAN_EXTRA, PLAN_ESTRATEGIA==="avalancha"?"bola":"avalancha");
+  const ahorroVsOtra = otra && !otra.imposible ? (otra.interes - conExtra.interes) : 0;
+  const mesesGanados = base.meses - conExtra.meses;
+  const interesAhorrado = base.interes - conExtra.interes;
+  const totalDeuda = deudasPagables().reduce((s,a)=>s+(+a.value||0),0);
+
+  modal(`
+    <div style="text-align:center;">
+      <div class="eyebrow">Aurova</div>
+      <h3 style="font-family:var(--serif);font-size:24px;margin:4px 0;color:var(--cream);">Tu plan para salir de deudas</h3>
+      <div class="sub">Deuda total: ${money(totalDeuda)}</div>
+    </div>
+
+    <div class="card" style="margin:14px 0;text-align:center;border-color:var(--champagne);">
+      <div class="muted" style="font-size:12px;">Sales libre en</div>
+      <div class="num" style="font-family:var(--serif);font-size:30px;color:var(--champagne);">${conExtra.meses} meses</div>
+      <div class="muted" style="font-size:13px;">${fechaEnMeses(conExtra.meses)}</div>
+      <div class="muted" style="font-size:12px;margin-top:6px;">Intereses que vas a pagar en el camino: <b style="color:var(--expense);">${money(conExtra.interes)}</b></div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="btn ${PLAN_ESTRATEGIA==="avalancha"?"":"ghost"} sm" style="flex:1;" onclick="planEstrategia('avalancha')">Ahorrar más</button>
+      <button class="btn ${PLAN_ESTRATEGIA==="bola"?"":"ghost"} sm" style="flex:1;" onclick="planEstrategia('bola')">Ver avances antes</button>
+    </div>
+    <p class="muted" style="font-size:12px;margin:-6px 2px 12px;">${PLAN_ESTRATEGIA==="avalancha"
+      ? "Atacas primero la deuda de interés más alto. Es la que menos intereses te cobra en total."
+      : "Atacas primero la deuda más chica. Tardas un poco más, pero ves desaparecer una deuda antes — si te cuesta mantener el ánimo, esta gana."}
+      ${ahorroVsOtra>0?`<br><b style="color:var(--champagne);">Esta te ahorra ${money(ahorroVsOtra)} frente a la otra.</b>`:""}</p>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div style="font-weight:700;color:var(--cream);margin-bottom:6px;">¿Y si le metes un poco más al mes?</div>
+      <input type="number" min="0" step="10" value="${PLAN_EXTRA||""}" placeholder="0" oninput="planExtraInput(this.value)" style="width:100%;">
+      ${PLAN_EXTRA>0 && mesesGanados>0
+        ? `<div style="margin-top:8px;font-size:14px;color:var(--champagne);">Con ${money(PLAN_EXTRA)} más al mes sales <b>${mesesGanados} mes${mesesGanados>1?"es":""} antes</b> y te ahorras <b>${money(interesAhorrado)}</b> en intereses.</div>`
+        : `<div class="muted" style="margin-top:8px;font-size:12.5px;">Escribe una cantidad para ver cuánto tiempo y cuánto dinero te ahorras.</div>`}
+    </div>
+
+    <div style="font-weight:700;color:var(--cream);margin:0 2px 8px;">El orden a seguir</div>
+    <div class="card">
+      ${conExtra.orden.map((o,i)=>`
+        <div class="row">
+          <div>
+            <div class="t1">${i===0?"👉 ":""}${i+1}. ${o.name}</div>
+            <div class="t2">${money(o.saldo)}${o.tasa?` · ${Math.round(o.tasa)}%`:""} · queda libre en ${fechaEnMeses(o.mes)}</div>
+          </div>
+        </div>`).join("")}
+    </div>
+    <p class="muted" style="font-size:12px;margin:8px 2px 0;">Ponle todo lo que te sobre a la <b style="color:var(--champagne);">primera de la lista</b> y a las demás solo su pago mínimo. Cada vez que liquidas una, su pago se suma a la siguiente — por eso la última cae mucho más rápido que la primera.</p>
+
+    <button class="btn block" style="margin-top:14px;" onclick="closeModal()">Cerrar</button>
+  `);
+}
+
 function delTxn(id){ state.transactions=state.transactions.filter(t=>t.id!==id); save(); render(); }
 function delRec(id){ if(!confirm(tr("¿Eliminar este pago recurrente?")))return; state.recurring=state.recurring.filter(r=>r.id!==id); save(); render(); }
 function delGoal(id){ if(!confirm(tr("¿Eliminar esta meta?")))return; state.goals=state.goals.filter(g=>g.id!==id); save(); render(); }
@@ -1615,31 +1786,46 @@ async function loadReferralStats(){
   if(!USER||!state.profile||!state.profile.referralCode){ REF_COUNT=0; return; }
   try{ const {count}=await sb.from("referrals").select("*",{count:"exact",head:true}).eq("referrer_code",state.profile.referralCode); REF_COUNT=count||0; }catch(e){ REF_COUNT=0; }
 }
+// El canje lo decide y lo escribe el SERVIDOR (función canjear_codigo, security
+// definer). Antes esta función leía promo_codes y se insertaba el canje sola:
+// como el cliente podía hacer ambas cosas, cualquiera se daba Premium desde la
+// consola del navegador. Aquí ya solo mandamos el texto y pintamos el veredicto.
 async function redeemCode(raw){
   const code=(raw||"").trim().toUpperCase();
   if(!code) return {ok:false,msg:"Escribe un código"};
+  let r;
   try{
-    const {data:promo}=await sb.from("promo_codes").select("*").eq("code",code).eq("active",true).maybeSingle();
-    if(promo && (!promo.expires_at || new Date(promo.expires_at) > new Date())){
-      try{ await sb.from("redemptions").insert({user_id:USER.id,code,kind:promo.kind}); }catch(e){}
-      if(promo.kind==="vip"){
-        state.profile.plan="premium"; state.profile.planSource="vip"; state.profile.planExpires = promo.months? isoPlusMonths(promo.months) : null; save();
-        return {ok:true,msg: promo.months? ("¡Premium gratis por "+promo.months+" meses! 🎉") : "¡Premium gratis para siempre! 🎉"};
-      } else { state.profile.discount={code,percent:promo.percent}; save(); return {ok:true,msg:"Descuento de "+promo.percent+"% aplicado ✓"}; }
-    }
-  }catch(e){}
-  try{
-    const {data:rc}=await sb.from("referral_codes").select("owner_id").eq("code",code).maybeSingle();
-    if(rc){
-      if(rc.owner_id===USER.id) return {ok:false,msg:"No puedes usar tu propio código"};
-      if(state.profile.referredBy) return {ok:false,msg:"Ya usaste un código de referido"};
-      try{ const {error}=await sb.from("referrals").insert({referrer_code:code,referee_id:USER.id}); if(error) throw error; }
-      catch(e){ return {ok:false,msg:"Ya usaste un código de referido"}; }
-      state.profile.referredBy=code; state.profile.plan="premium"; state.profile.planSource="referido"; state.profile.planExpires=isoPlusMonths(1); save();
-      return {ok:true,msg:"¡Código válido! Ganaste 1 mes de Premium gratis 🎉"};
-    }
-  }catch(e){}
-  return {ok:false,msg:"Código no válido o vencido"};
+    const {data,error}=await sb.rpc("canjear_codigo",{p_code:code});
+    if(error) throw error;
+    r=data||{};
+  }catch(e){ return {ok:false,msg:"No se pudo validar el código. Revisa tu conexión."}; }
+
+  if(!r.ok){
+    const motivos={
+      vencido:"Ese código ya venció",
+      agotado:"Ese código ya llegó a su límite de usos",
+      ya_usado:"Ya usaste ese código",
+      propio:"No puedes usar tu propio código",
+      ya_referido:"Ya usaste un código de referido",
+      no_auth:"Inicia sesión para canjear un código"
+    };
+    return {ok:false,msg:motivos[r.msg]||"Código no válido o vencido"};
+  }
+
+  // El plan local es solo para que la interfaz reaccione al instante; el
+  // veredicto de verdad lo vuelve a pedir canjear() al servidor enseguida.
+  if(r.tipo==="referido"){
+    state.profile.referredBy=code; state.profile.plan="premium";
+    state.profile.planSource="referido"; state.profile.planExpires=isoPlusMonths(1); save();
+    return {ok:true,msg:"¡Código válido! Ganaste 1 mes de Premium gratis 🎉"};
+  }
+  if(r.kind==="vip"){
+    state.profile.plan="premium"; state.profile.planSource="vip";
+    state.profile.planExpires = r.months? isoPlusMonths(r.months) : null; save();
+    return {ok:true,msg: r.months? ("¡Premium gratis por "+r.months+" meses! 🎉") : "¡Premium gratis para siempre! 🎉"};
+  }
+  state.profile.discount={code,percent:r.percent}; save();
+  return {ok:true,msg:"Descuento de "+r.percent+"% aplicado ✓"};
 }
 function openPlanes(){
   const pro=planActivo(), p=state.profile||{};
