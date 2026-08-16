@@ -415,6 +415,17 @@ const TR_EN = {
   "No se pudo unir. Revisa tu conexión.":"Couldn't join. Check your connection.",
   "Te uniste, pero no pude cargar los datos. Recarga la app.":"You joined, but I couldn't load the data. Reload the app.",
   "Los meses anteriores conservan el suyo.":"Previous months keep their own.",
+  "Eliminar mi cuenta para siempre":"Delete my account forever",
+  "\"Empezar de cero\" borra tus finanzas pero conserva tu cuenta. \"Eliminar mi cuenta\" borra todo y te da de baja — no se puede deshacer.":"\"Start over\" clears your finances but keeps your account. \"Delete my account\" erases everything and closes it — this can't be undone.",
+  "Política de privacidad":"Privacy policy", "Términos de uso":"Terms of use",
+  "¿Eliminar tu cuenta para siempre? Se borran tus finanzas, tu perfil y tu acceso. Esto NO se puede deshacer.":"Delete your account forever? Your finances, profile and access will be erased. This CANNOT be undone.",
+  "Última confirmación: se elimina todo y no hay forma de recuperarlo.":"Final confirmation: everything is deleted with no way to recover it.",
+  "Tu cuenta fue eliminada. Gracias por haber usado Aurova.":"Your account was deleted. Thanks for having used Aurova.",
+  "No se pudo eliminar la cuenta. Intenta de nuevo.":"Couldn't delete the account. Try again.",
+  "El monto cambia cada vez (Spark, Uber, propinas, horas)":"The amount changes each time (Spark, Uber, tips, hours)",
+  "Usaremos el promedio de lo que recibas de verdad, no la cifra que escribas.":"We'll use the average of what you actually receive, not the number you type.",
+  "(promedio real)":"(real average)",
+  "Envío a la familia":"Money sent home", "Préstamo familiar":"Family loan", "Trabajo por app (gig)":"Gig work",
   "Ninguna":"None",
   "‹ Volver":"‹ Back",
   // Plan para salir de deudas. Frases largas y completas a propósito: tr() hace
@@ -500,7 +511,7 @@ function mapTipo(t,kind){
 }
 function normalizeState(s){
   s.categories=s.categories||[]; s.transactions=s.transactions||[]; s.recurring=s.recurring||[];
-  s.recurring.forEach(r=>{ if(!r.type) r.type="gasto"; if(!r.freq) r.freq="mensual"; });
+  s.recurring.forEach(r=>{ if(!r.type) r.type="gasto"; if(!r.freq) r.freq="mensual"; if(r.variable==null) r.variable=false; });
   s.goals=s.goals||[]; s.budgets=s.budgets||{}; s.accounts=s.accounts||[]; s.nwHistory=s.nwHistory||[];
   // Los presupuestos pasan de ser globales a estar fechados por mes. Antes,
   // cambiar el limite de Comida hoy reescribia el analisis de los 12 meses
@@ -802,6 +813,7 @@ function viewInicio(){
     ${MODE==="household"?`<div style="display:inline-block;background:rgba(201,169,106,.12);border:1px solid var(--champagne-line);border-radius:999px;padding:3px 12px;font-size:11px;color:var(--champagne);margin-bottom:10px;">👫 Cuenta conjunta</div>`:""}
     ${state.profile&&state.profile.name?`<div style="font-family:var(--serif);color:var(--cream);font-size:18px;margin:0 0 4px;">Hola, ${esc(state.profile.name)} 👋</div>`:""}
     ${state.profile&&state.profile.goal&&goalTip(state.profile.goal)?`<div class="muted" style="font-size:12.5px;margin:0 0 12px;">💡 ${goalTip(state.profile.goal)}</div>`:""}
+    ${atajoDeMeta()}
     <div class="hero ${q<0?'neg':''}">
       <div class="lbl">Me queda para gastar</div>
       <div class="big num">${money(q)}</div>
@@ -1005,7 +1017,30 @@ function semanalMeta(g){
 /* ============ VISTA: PRESUPUESTO (PLAN) ============ */
 function factorFreq(f){ return ({semanal:52/12,quincenal:26/12,mensual:1})[f]||1; }
 function freqLabel(f){ const es={semanal:"semanal",quincenal:"cada 2 sem",mensual:"mensual"}; const en={semanal:"weekly",quincenal:"every 2 wks",mensual:"monthly"}; return (LANG==="en"?en:es)[f]||(LANG==="en"?"monthly":"mensual"); }
-function expectedMensual(r){ return (+r.amount||0)*factorFreq(r.freq||"mensual"); }
+/* Para un ingreso variable, la cifra que el usuario escribio es una
+   suposicion; lo que de verdad recibio esta en sus movimientos. Un repartidor
+   que puso $1,733 y lleva tres meses cobrando $2,050 de promedio merece que la
+   app use el promedio: es la diferencia entre un plan de mentira y uno suyo.
+   Con menos de dos meses de historial no hay promedio confiable y se usa lo
+   que escribio. */
+function promedioRecibido(r,meses){
+  const hist=[];
+  const d=new Date(SEL+"-01T00:00:00");
+  for(let i=1;i<=meses;i++){
+    const p=new Date(d); p.setMonth(p.getMonth()-i);
+    const m=p.toISOString().slice(0,7);
+    const v=recibidoDe(r,m);
+    if(v>0) hist.push(v);
+  }
+  if(hist.length<2) return null;
+  return hist.reduce((a,b)=>a+b,0)/hist.length;
+}
+function expectedMensual(r){
+  const base=(+r.amount||0)*factorFreq(r.freq||"mensual");
+  if(r.type!=="ingreso" || !r.variable) return base;
+  const prom=promedioRecibido(r,6);
+  return prom==null ? base : prom;
+}
 function recibidoDe(r,m){ return txnsOf(m).filter(t=>t.type==="ingreso"&&t.note===r.name+" (pago)").reduce((s,t)=>s+t.amount,0); }
 function viewPresupuesto(){
   const incomes = state.recurring.filter(r=>r.type==="ingreso").sort((a,b)=>(a.dueDay||1)-(b.dueDay||1));
@@ -1071,7 +1106,7 @@ function viewPresupuesto(){
           <div class="ic" style="color:var(--income)">↑</div>
           <div class="body">
             <div class="t1">${esc(r.name)}</div>
-            <div class="t2">${money(r.amount)} ${freqLabel(r.freq)} · ~${money(esp)}/mes · recibido ${money(rec)}</div>
+            <div class="t2">${money(r.amount)} ${freqLabel(r.freq)} · ~${money(esp)}/mes${r.variable?" (promedio real)":""} · recibido ${money(rec)}</div>
           </div>
           <button class="btn ghost sm" onclick="recibirPago('${r.id}')">Recibir</button>
           <button class="del" onclick="editRec('${r.id}')" aria-label="Editar">✎</button>
@@ -1474,9 +1509,9 @@ function openRec(presetType,id){
       <button class="btn ghost" onclick="closeModal()">Cancelar</button>
       <button class="btn" onclick="saveRec()">Guardar</button>
     </div>`);
-  setRecType(recType, r?r.categoryId:null, r?r.freq:null);
+  setRecType(recType, r?r.categoryId:null, r?r.freq:null, r?r.variable:false);
 }
-function setRecType(t,preCat,preFreq){ recType=t;
+function setRecType(t,preCat,preFreq,preVar){ recType=t;
   document.getElementById("segRExp").className=t==="gasto"?"on-exp":"";
   document.getElementById("segRInc").className=t==="ingreso"?"on-inc":"";
   const sel=document.getElementById("rCat");
@@ -1488,11 +1523,17 @@ function setRecType(t,preCat,preFreq){ recType=t;
   // salía inflado en cientos de dólares sin que nada avisara.
   const extra=document.getElementById("rExtra");
   const f=preFreq||(t==="ingreso"?((state.profile&&state.profile.payFreq)||"mensual"):"mensual");
+  const varOn = preVar===true;
   extra.innerHTML=`<div class="field"><label>${t==="ingreso"?"Frecuencia de pago":"Cada cuánto se paga"}</label><select id="rFreq">
       <option value="semanal" ${f==="semanal"?"selected":""}>Semanal</option>
       <option value="quincenal" ${f==="quincenal"?"selected":""}>Cada 2 semanas (bi-weekly)</option>
       <option value="mensual" ${f==="mensual"?"selected":""}>Mensual</option>
-    </select></div>`;
+    </select></div>`
+    + (t==="ingreso" ? `<label class="chk" style="display:flex;gap:9px;align-items:flex-start;margin:2px 2px 12px;font-size:13.5px;cursor:pointer;">
+        <input type="checkbox" id="rVar" ${varOn?"checked":""} style="margin-top:3px;">
+        <span>El monto cambia cada vez (Spark, Uber, propinas, horas)<br>
+        <span class="muted" style="font-size:12px;">Usaremos el promedio de lo que recibas de verdad, no la cifra que escribas.</span></span>
+      </label>` : "");
 }
 function editRec(id){ openRec(null,id); }
 function saveRec(){
@@ -1501,7 +1542,8 @@ function saveRec(){
   const day=Math.min(31,Math.max(1,parseInt(document.getElementById("rDay").value)||1));
   if(!name||!amount||amount<=0){ toast("Completa nombre y monto"); return; }
   const freq = (document.getElementById("rFreq")||{}).value||"mensual";
-  const data={type:recType,name,amount,dueDay:day,categoryId:document.getElementById("rCat").value,freq};
+  const variable = recType==="ingreso" && !!(document.getElementById("rVar")||{}).checked;
+  const data={type:recType,name,amount,dueDay:day,categoryId:document.getElementById("rCat").value,freq,variable};
   if(editRecId){ Object.assign(state.recurring.find(x=>x.id===editRecId),data); }
   else state.recurring.push({id:uid(),paid:[],...data});
   save(); closeModal(); toast("Guardado"); render();
@@ -1584,6 +1626,12 @@ function openAjustes(){
       <button class="btn ghost block" onclick="exportar()">Exportar mis datos (respaldo)</button>
       <button class="btn ghost block" onclick="cargarEjemplo()">Cargar datos de ejemplo</button>
       <button class="btn ghost block" style="color:var(--expense);border-color:var(--expense)" onclick="borrarTodo()">Empezar de cero (borrar todo)</button>
+      <button class="btn ghost block" style="margin-top:8px;color:var(--expense);border-color:var(--expense)" onclick="borrarCuenta()">Eliminar mi cuenta para siempre</button>
+      <p class="muted" style="font-size:12px;margin:10px 2px 0;">"Empezar de cero" borra tus finanzas pero conserva tu cuenta. "Eliminar mi cuenta" borra todo y te da de baja — no se puede deshacer.</p>
+      <div style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;">
+        <button class="linkbtn" onclick="verLegal('privacidad')">Política de privacidad</button>
+        <button class="linkbtn" onclick="verLegal('terminos')">Términos de uso</button>
+      </div>
       <button class="btn ghost block" onclick="logout()">Cerrar sesión</button>
       <button class="btn block" onclick="closeModal()">Cerrar</button>
     </div>`);
@@ -1628,6 +1676,54 @@ function borrarTodo(){
   const fresh=seed(); fresh.profile=state.profile; // conserva tu cuenta (nombre, plan, idioma), resetea solo las finanzas
   state=fresh; save(); closeModal(); toast("Datos restablecidos"); render();
 }
+/* Borrado real de la cuenta. Antes solo existia "Empezar de cero", que vaciaba
+   las finanzas en el navegador y dejaba intactos el usuario, la suscripcion y
+   los datos en la nube. Sin esto no hay App Store, no hay Google Play y no se
+   cumple el derecho de supresion — pero sobre todo: si alguien te confia sus
+   finanzas, tiene que poder irse con todo. */
+async function borrarCuenta(){
+  if(!confirm(tr("¿Eliminar tu cuenta para siempre? Se borran tus finanzas, tu perfil y tu acceso. Esto NO se puede deshacer.")))return;
+  if(!confirm(tr("Última confirmación: se elimina todo y no hay forma de recuperarlo.")))return;
+  try{
+    const {data,error}=await sb.rpc("borrar_mi_cuenta");
+    if(error) throw error;
+    if(!data||!data.ok) throw new Error("no_ok");
+    try{ localStorage.removeItem(KEY); localStorage.removeItem(BACKUP_KEY); }catch(e){}
+    try{ await sb.auth.signOut(); }catch(e){}
+    alert(tr("Tu cuenta fue eliminada. Gracias por haber usado Aurova."));
+    location.reload();
+  }catch(e){ toast("No se pudo eliminar la cuenta. Intenta de nuevo."); }
+}
+
+/* Privacidad y terminos. Viven dentro de la app a proposito: son requisito de
+   las tiendas y de la ley, y una app de finanzas que no dice que hace con los
+   datos no merece que le confien ninguno. */
+const LEGAL={
+  privacidad:{t:"Política de privacidad", h:`
+    <p><b>Qué guardamos.</b> Solo lo que tú escribes en la app: movimientos, pagos, metas, cuentas y presupuesto, más tu correo y tu nombre. Nada más.</p>
+    <p><b>Dónde.</b> En Supabase (Estados Unidos), cifrado en tránsito y en reposo. Cada cuenta solo puede leer sus propios datos — está impuesto por la base de datos, no solo por la app.</p>
+    <p><b>Qué NO hacemos.</b> No vendemos tus datos. No los compartimos con anunciantes. No los usamos para entrenar modelos. No hay rastreadores de terceros.</p>
+    <p><b>Quién más los ve.</b> Nadie. El administrador ve tu correo, nombre y plan para dar soporte — nunca tus finanzas; la base de datos se lo impide.</p>
+    <p><b>Servicios que usamos.</b> Supabase (datos y acceso), Vercel (la app), Stripe (pagos — nosotros nunca vemos tu tarjeta), Anthropic (el asistente IA, solo si lo usas y solo con el resumen que le mandas).</p>
+    <p><b>Tus derechos.</b> Puedes exportar todo en JSON desde Ajustes, y eliminar tu cuenta y todos tus datos cuando quieras desde Ajustes → Eliminar mi cuenta. El borrado es inmediato y definitivo.</p>
+    <p><b>Contacto.</b> jesusgonzales0703@gmail.com</p>`},
+  terminos:{t:"Términos de uso", h:`
+    <p><b>Qué es Aurova.</b> Una herramienta para llevar tus finanzas personales. Te ayuda a ordenarlas y a ver tus números con claridad.</p>
+    <p><b>Qué NO es.</b> No somos asesores financieros, contadores ni banco. Nada de lo que muestra la app —incluido el asistente IA y el plan de deudas— es asesoría profesional. Las decisiones sobre tu dinero son tuyas.</p>
+    <p><b>Tus datos son tuyos.</b> Los escribes tú y te los puedes llevar cuando quieras. Nosotros no verificamos si son correctos.</p>
+    <p><b>Pagos.</b> Premium se cobra por adelantado vía Stripe y se renueva solo hasta que lo canceles, desde Perfil → Administrar suscripción. Cancelas cuando quieras y sigues con Premium hasta que termine el periodo pagado.</p>
+    <p><b>Disponibilidad.</b> Hacemos lo posible por que la app esté siempre arriba, pero no podemos garantizarlo. Exporta tus datos de vez en cuando.</p>
+    <p><b>Cuentas.</b> Podemos cerrar cuentas que abusen del servicio o intenten vulnerarlo.</p>
+    <p><b>Contacto.</b> jesusgonzales0703@gmail.com</p>`}
+};
+function verLegal(cual){
+  const L=LEGAL[cual]||LEGAL.privacidad;
+  modal(`<h3>${L.t}</h3>
+    <div class="sub">Aurova · actualizado agosto 2026</div>
+    <div style="max-height:56vh;overflow-y:auto;margin-top:12px;font-size:14px;line-height:1.65;">${L.h}</div>
+    <button class="btn block" style="margin-top:14px;" onclick="closeModal()">Cerrar</button>`);
+}
+
 function cargarEjemplo(){
   const g = state.categories.filter(c=>c.kind==="gasto");
   const i = state.categories.filter(c=>c.kind==="ingreso");
@@ -1977,17 +2073,74 @@ function renderOnb(){
       </div>`);
   }
 }
+/* Categorias que la vida de este publico necesita y ninguna app trae de
+   fabrica. "Prestamo familiar" no es una deuda cualquiera: no tiene interes ni
+   fecha, pero pesa. Y "Envio a la familia" es un gasto fijo mensual para
+   millones de personas, que hoy acaba en "otros gastos" como si fuera un
+   antojo. Verlas escritas con naturalidad, sin que el sistema las trate como
+   una rareza, es la mitad de sentirse en casa. */
+const CATS_EXTRA=[
+  ["Envío a la familia","gasto","#C9A96A"],
+  ["Préstamo familiar","gasto","#D98E80"],
+  ["Trabajo por app (gig)","ingreso","#87B9C4"]
+];
+function agregarCatsExtra(){
+  CATS_EXTRA.forEach(([name,kind,color])=>{
+    if(state.categories.some(c=>c.name===name)) return;
+    state.categories.push({id:uid(),name,kind,color});
+  });
+}
+
 function finishOnb(example){
   const rem=document.getElementById("onbRem"); if(rem) ONB.reminders=rem.checked;
   state.profile=state.profile||{};
   state.profile.name=ONB.name; state.profile.goal=ONB.goal; state.profile.currency=ONB.currency||"USD";
   state.profile.payFreq=ONB.payFreq; state.profile.reminders=ONB.reminders;
+  // Quien cobra por app o semanal casi siempre tiene ingreso variable; quien
+  // manda dinero a casa lo hace todos los meses. Se ofrecen las categorias,
+  // no se imponen: se pueden borrar como cualquier otra.
+  agregarCatsExtra();
   localStorage.setItem("mifin_welcomed","1");
   if(example){ cargarEjemplo(); } else { save(); closeModal(); render(); }
 }
 const GOAL_TIPS={ahorrar:"Crea una meta de ahorro y aparta un poco cada mes.",deudas:"Registra tus deudas en Análisis y baja el saldo cada vez que pagas.",gastos:"Mira 'Gastos por categoría' abajo para ver a dónde se va tu dinero.",presupuestar:"Ponle un límite a tus categorías en la pestaña Plan.",invertir:"Registra tus inversiones en Análisis y observa crecer tu patrimonio."};
 const GOAL_TIPS_EN={ahorrar:"Create a savings goal and set aside a bit each month.",deudas:"Log your debts in Insights and lower the balance each time you pay.",gastos:"Check 'Spending by category' below to see where your money goes.",presupuestar:"Set a limit for your categories in the Plan tab.",invertir:"Log your investments in Insights and watch your net worth grow."};
 function goalTip(g){ return (LANG==="en"?GOAL_TIPS_EN:GOAL_TIPS)[g]; }
+/* El alta pregunta "que te trae a Aurova" y hasta hoy esa respuesta solo servia
+   para una frase de consejo. Si viniste por deudas, lo primero que deberias ver
+   es tu plan de deudas — no tener que ir a buscarlo a otra pestana. */
+function atajoDeMeta(){
+  const g=(state.profile||{}).goal;
+  if(!g) return "";
+  const libre=meQueda(SEL);
+  let ic,txt,act;
+  if(g==="deudas" && deudasPagables().length){
+    const total=deudasPagables().reduce((s,a)=>s+(+a.value||0),0);
+    ic="📉"; act="openPlanDeudas()";
+    txt=`Debes ${money(total)}. Mira en cuánto sales libre.`;
+  } else if(g==="ahorrar" && state.goals.length){
+    const g0=state.goals[0], falta=Math.max(0,(g0.target||0)-(g0.saved||0));
+    ic="🎯"; act="go('metas')";
+    txt=`Te faltan ${money(falta)} para ${esc(g0.name)}${libre>0?` · te sobran ${money(libre)} este mes`:""}.`;
+  } else if(g==="gastos" && state.transactions.length){
+    ic="🔍"; act="go('analisis')";
+    txt="Mira a dónde se te fue el dinero este mes.";
+  } else if(g==="presupuestar"){
+    ic="📊"; act="go('presupuesto')";
+    txt=libre>0?`Te quedan ${money(libre)} libres. Decide a dónde van.`:"Arma tu plan del mes.";
+  } else if(g==="invertir"){
+    ic="📈"; act="go('analisis')";
+    txt=`Tu patrimonio: ${money(patrimonio())}.`;
+  } else return "";
+
+  return `<button class="card" style="width:100%;text-align:left;display:flex;align-items:center;gap:12px;
+      border-color:var(--champagne-line);cursor:pointer;margin-bottom:12px;" onclick="${act}">
+    <span style="font-size:22px;">${ic}</span>
+    <span style="flex:1;"><span class="t1" style="display:block;">${txt}</span></span>
+    <span style="color:var(--champagne);font-size:18px;">›</span>
+  </button>`;
+}
+
 function recordatorioInicio(){
   if(!(state.profile&&state.profile.reminders)) return "";
   if(SEL!==curMonth()) return "";
