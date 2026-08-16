@@ -88,7 +88,12 @@
   .row .t2{font-size:12px;color:var(--muted);}
   .row .amt{font-family:var(--serif);font-size:16px;text-align:right;white-space:nowrap;}
   .amt.income{color:var(--income);} .amt.expense{color:var(--cream);}
-  .row .del{color:var(--muted);font-size:18px;padding:4px 6px;border-radius:8px;}
+  /* 44px es el mínimo táctil recomendado; estaban en ~26px y pegados uno a
+     otro, así que borrar algo por error era cuestión de tiempo en un teléfono. */
+  .row .del{color:var(--muted);font-size:18px;min-width:44px;min-height:44px;padding:0 8px;
+    border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
+    background:none;border:none;cursor:pointer;}
+  .row .del:focus-visible{outline:2px solid var(--champagne);outline-offset:2px;}
   .row .del:hover{color:var(--expense);background:var(--surface3);}
 
   .chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;
@@ -403,6 +408,13 @@ const TR_EN = {
   "Aportar a":"Add to",
   "Hola,":"Hi,",
   "Se actualizó con lo de tu otro dispositivo":"Updated with what's on your other device",
+  "¿Eliminar este movimiento?":"Delete this transaction?",
+  "Se actualizó con lo que guardó tu pareja":"Updated with what your partner saved",
+  "Demasiados intentos. Espera una hora.":"Too many attempts. Wait an hour.",
+  "Ya eras parte de esta cuenta":"You were already part of this account",
+  "No se pudo unir. Revisa tu conexión.":"Couldn't join. Check your connection.",
+  "Te uniste, pero no pude cargar los datos. Recarga la app.":"You joined, but I couldn't load the data. Reload the app.",
+  "Los meses anteriores conservan el suyo.":"Previous months keep their own.",
   "Ninguna":"None",
   "‹ Volver":"‹ Back",
   // Plan para salir de deudas. Frases largas y completas a propósito: tr() hace
@@ -490,6 +502,13 @@ function normalizeState(s){
   s.categories=s.categories||[]; s.transactions=s.transactions||[]; s.recurring=s.recurring||[];
   s.recurring.forEach(r=>{ if(!r.type) r.type="gasto"; if(!r.freq) r.freq="mensual"; });
   s.goals=s.goals||[]; s.budgets=s.budgets||{}; s.accounts=s.accounts||[]; s.nwHistory=s.nwHistory||[];
+  // Los presupuestos pasan de ser globales a estar fechados por mes. Antes,
+  // cambiar el limite de Comida hoy reescribia el analisis de los 12 meses
+  // anteriores: mirabas marzo y veias el tope de agosto. Lo viejo se mueve al
+  // mes en curso, que es el unico para el que ese numero era cierto.
+  const esMes=k=>/^\d{4}-\d{2}$/.test(k);
+  const claves=Object.keys(s.budgets);
+  if(claves.length && !claves.some(esMes)) s.budgets={[curMonth()]: s.budgets};
   s.profile = s.profile || {};
   if(s.profile.name==null) s.profile.name="";
   if(s.profile.currency==null) s.profile.currency="USD";
@@ -697,6 +716,15 @@ function pagosDelMes(m){
   }));
   return rec.concat(deu).sort((x,y)=>x.dueDay-y.dueDay);
 }
+/* El tope vigente ESE mes: el ultimo que se puso en ese mes o antes. Poner un
+   limite hoy no cambia lo que tenias en marzo, y mirar marzo muestra lo que
+   regia entonces. */
+function budgetsDelMes(m){
+  const meses=Object.keys(state.budgets||{}).filter(k=>k<=m).sort();
+  return meses.length ? (state.budgets[meses[meses.length-1]]||{}) : {};
+}
+function budgetDe(catId,m){ return (budgetsDelMes(m))[catId]||0; }
+
 function pagosPendientes(m){ return pagosDelMes(m).filter(p=>!p.paid).reduce((s,p)=>s+p.mensual,0); }
 /* ============ Lo que ya tiene dueño ============
    Un gasto recurrente y el mínimo de una deuda no son "presupuesto": ya están
@@ -985,7 +1013,7 @@ function viewPresupuesto(){
   const gc = gastoCats();
   const compCat = comprometidoPorCat();
   const rows = gc.map(c=>{
-    const limit = state.budgets[c.id]||0;
+    const limit = budgetDe(c.id, SEL);
     const spent = txnsOf(SEL).filter(t=>t.type==="gasto"&&t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
     return {c,limit,spent,comp:compCat[c.id]||0};
   });
@@ -1298,13 +1326,77 @@ function pintarPlanDeudas(){
   `);
 }
 
-function delTxn(id){ state.transactions=state.transactions.filter(t=>t.id!==id); save(); render(); }
+function delTxn(id){
+  // Las metas, cuentas y recurrentes sí confirmaban; los movimientos no, y son
+  // lo que más se borra por error con los botones pegados.
+  if(!confirm(tr("¿Eliminar este movimiento?"))) return;
+  state.transactions=state.transactions.filter(t=>t.id!==id); save(); render();
+}
 function delRec(id){ if(!confirm(tr("¿Eliminar este pago recurrente?")))return; state.recurring=state.recurring.filter(r=>r.id!==id); save(); render(); }
 function delGoal(id){ if(!confirm(tr("¿Eliminar esta meta?")))return; state.goals=state.goals.filter(g=>g.id!==id); save(); render(); }
 
 /* ============ Modales ============ */
-function modal(html){ document.getElementById("modalRoot").innerHTML = tr(`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">${html}</div></div>`); document.body.classList.add("modal-open"); }
-function closeModal(){ document.getElementById("modalRoot").innerHTML=""; document.body.classList.remove("modal-open"); }
+/* Accesibilidad de los modales.
+   Antes: 38 <label> sin `for`, ningún role, no cerraba con Escape y el foco se
+   quedaba detrás del modal. Quien navega con teclado o usa lector de pantalla
+   no podía ni registrarse.
+
+   Los `for` se ponen aquí, al abrir, en vez de en cada plantilla: son 38 sitios
+   y cada modal nuevo volvería a olvidarlo. Así se arregla una vez y para
+   siempre. */
+let FOCO_PREVIO=null;
+const FOCUSABLES='button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])';
+
+function modal(html){
+  FOCO_PREVIO = document.activeElement;
+  const root=document.getElementById("modalRoot");
+  root.innerHTML = tr(`<div class="overlay" onclick="if(event.target===this)closeModal()">
+    <div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`);
+  document.body.classList.add("modal-open");
+
+  const sheet=root.querySelector(".sheet");
+  if(!sheet) return;
+
+  // Cada label apunta al primer campo de su bloque.
+  let i=0;
+  sheet.querySelectorAll("label").forEach(lb=>{
+    if(lb.getAttribute("for")) return;
+    const cont=lb.closest(".field,.row2>div,div")||sheet;
+    const campo=cont.querySelector("input,select,textarea");
+    if(!campo) return;
+    if(!campo.id) campo.id="f_"+(++i)+"_"+Math.random().toString(36).slice(2,7);
+    lb.setAttribute("for",campo.id);
+  });
+
+  // El título del modal nombra al diálogo para los lectores de pantalla.
+  const h=sheet.querySelector("h3");
+  if(h){ if(!h.id) h.id="dlgTitle"; sheet.setAttribute("aria-labelledby",h.id); }
+
+  // El foco entra al modal; si no, sigue detrás, en la página que quedó tapada.
+  const f=sheet.querySelectorAll(FOCUSABLES);
+  if(f.length) (sheet.querySelector("[autofocus]")||f[0]).focus();
+}
+
+function closeModal(){
+  document.getElementById("modalRoot").innerHTML="";
+  document.body.classList.remove("modal-open");
+  if(FOCO_PREVIO && FOCO_PREVIO.focus){ try{ FOCO_PREVIO.focus(); }catch(e){} }
+  FOCO_PREVIO=null;
+}
+
+// Escape cierra, y Tab da vueltas dentro del modal en vez de irse a la página
+// de atrás — que es lo que hace que un modal se sienta roto con teclado.
+document.addEventListener("keydown", e=>{
+  const sheet=document.querySelector("#modalRoot .sheet");
+  if(!sheet) return;
+  if(e.key==="Escape"){ e.preventDefault(); closeModal(); return; }
+  if(e.key!=="Tab") return;
+  const f=Array.from(sheet.querySelectorAll(FOCUSABLES)).filter(x=>!x.disabled && x.offsetParent!==null);
+  if(!f.length) return;
+  const primero=f[0], ultimo=f[f.length-1];
+  if(e.shiftKey && document.activeElement===primero){ e.preventDefault(); ultimo.focus(); }
+  else if(!e.shiftKey && document.activeElement===ultimo){ e.preventDefault(); primero.focus(); }
+});
 
 let txnType="gasto", editTxnId=null;
 function openTxn(id){
@@ -1458,10 +1550,10 @@ function saveAportar(id){
   save(); closeModal(); toast("Aporte registrado"); render();
 }
 function openBudget(catId){
-  const c=catById(catId); const cur=state.budgets[catId]||"";
+  const c=catById(catId); const cur=budgetDe(catId,SEL)||"";
   modal(`
     <h3>Presupuesto: ${esc(c.name)}</h3>
-    <div class="sub">Máximo que quieres gastar al mes en esta categoría.</div>
+    <div class="sub">Máximo para esta categoría, a partir de ${mesLabel(SEL)}. Los meses anteriores conservan el suyo.</div>
     <div class="field"><label>Límite mensual</label><input id="bLimit" type="number" inputmode="decimal" placeholder="0.00" step="0.01" value="${cur}" autofocus></div>
     <div class="sheet-actions">
       <button class="btn ghost" onclick="delBudget('${catId}')">Quitar</button>
@@ -1470,10 +1562,18 @@ function openBudget(catId){
 }
 function saveBudget(catId){
   const v=parseFloat(document.getElementById("bLimit").value);
-  if(!v||v<=0){ delete state.budgets[catId]; } else { state.budgets[catId]=v; }
+  // Se escribe en el mes que estas viendo, partiendo de lo que ya regia: asi
+  // cambiar un tope no borra los demas ni toca los meses anteriores.
+  const mes=Object.assign({}, budgetsDelMes(SEL), state.budgets[SEL]||{});
+  if(!v||v<=0) delete mes[catId]; else mes[catId]=v;
+  state.budgets[SEL]=mes;
   save(); closeModal(); render();
 }
-function delBudget(catId){ delete state.budgets[catId]; save(); closeModal(); render(); }
+function delBudget(catId){
+  const mes=Object.assign({}, budgetsDelMes(SEL), state.budgets[SEL]||{});
+  delete mes[catId]; state.budgets[SEL]=mes;
+  save(); closeModal(); render();
+}
 
 function openAjustes(){
   modal(`
@@ -1552,7 +1652,7 @@ function cargarEjemplo(){
     {id:uid(),name:"Fondo de emergencia",target:3000,saved:600,targetDate:isoPlusMonths(8),contribs:[{month:M,amount:600}]},
     {id:uid(),name:"Pagar deuda tarjeta",target:1500,saved:300,targetDate:isoPlusMonths(5),contribs:[{month:M,amount:300}]}
   ];
-  state.budgets={[gid("Comida")]:400,[gid("Transporte")]:500,[gid("Entretenimiento")]:150};
+  state.budgets={[curMonth()]:{[gid("Comida")]:400,[gid("Transporte")]:500,[gid("Entretenimiento")]:150}};
   const ac=(o)=>({id:uid(),paid:[],paidLog:[],value:0,rate:0,payment:0,limit:0,dueDay:1,...o});
   state.accounts=[
     // Activos (un solo lado)
@@ -2283,7 +2383,13 @@ function descargarReporte(){
 }
 
 /* ============ Modo Parejas (cuenta conjunta) ============ */
-function genHHCode(){ return "AUR"+Math.random().toString(36).slice(2,7).toUpperCase(); }
+// 8 caracteres en vez de 5. Con el limite de intentos del servidor ya no se
+// puede probar a la fuerza, pero un codigo mas largo cuesta lo mismo.
+function genHHCode(){
+  const a="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sin O/0 ni I/1, que se confunden al dictarlo
+  let c=""; for(let i=0;i<8;i++) c+=a[Math.floor(Math.random()*a.length)];
+  return "AUR"+c;
+}
 function openParejas(){
   if(!planActivo()){ openUpsell("La cuenta conjunta (parejas)"); return; }
   if(MODE==="household" && HH){
@@ -2305,7 +2411,8 @@ function openParejas(){
 async function crearParejas(){
   const code=genHHCode();
   try{
-    const {data:hh,error}=await sb.from("households").insert({name:"",created_by:USER.id,join_code:code}).select().single();
+    const vence=new Date(Date.now()+7*24*3600*1000).toISOString();
+    const {data:hh,error}=await sb.from("households").insert({name:"",created_by:USER.id,join_code:code,join_code_expires_at:vence}).select().single();
     if(error) throw error;
     await sb.from("household_members").insert({household_id:hh.id,user_id:USER.id,name:(state.profile&&state.profile.name)||""});
     await sb.from("household_data").insert({household_id:hh.id,data:financesOf(state)});
@@ -2313,18 +2420,34 @@ async function crearParejas(){
     save(); toast("Cuenta conjunta creada ✓"); openParejas();
   }catch(e){ toast((e&&e.message)||"No se pudo crear"); }
 }
+// Unirse lo decide el SERVIDOR (funcion unirse_hogar). Antes el cliente leia
+// households por codigo y se insertaba solo como miembro — y como households
+// era legible por cualquiera, se podian listar todas las cuentas conjuntas y
+// entrar a la que fuera. Ahora el cliente solo manda el texto del codigo.
 async function unirseParejas(codeRaw){
   const code=(codeRaw||"").trim().toUpperCase();
   if(!code){ toast("Escribe el código"); return; }
+  let r;
   try{
-    const {data:hh}=await sb.from("households").select("id").eq("join_code",code).maybeSingle();
-    if(!hh){ toast("Código no válido"); return; }
-    await sb.from("household_members").insert({household_id:hh.id,user_id:USER.id,name:(state.profile&&state.profile.name)||""});
-    const {data:hd}=await sb.from("household_data").select("data").eq("household_id",hh.id).maybeSingle();
+    const {data,error}=await sb.rpc("unirse_hogar",{p_code:code});
+    if(error) throw error;
+    r=data||{};
+  }catch(e){ toast("No se pudo unir. Revisa tu conexión."); return; }
+
+  if(!r.ok){
+    const m={invalido:"Código no válido o vencido",
+             demasiados_intentos:"Demasiados intentos. Espera una hora.",
+             no_auth:"Inicia sesión primero"};
+    toast(m[r.msg]||"No se pudo unir");
+    return;
+  }
+  try{
+    const {data:hd}=await sb.from("household_data").select("data, updated_at").eq("household_id",r.household_id).maybeSingle();
     state=Object.assign({profile:state.profile}, financesOf(normalizeState((hd&&hd.data)||{})));
-    state.profile.household=hh.id; MODE="household"; HH=hh.id;
-    save(); toast("¡Te uniste! 🎉"); openParejas(); render();
-  }catch(e){ toast("No se pudo unir (¿ya eres miembro?)"); }
+    HH_TS = hd ? hd.updated_at : null;
+    state.profile.household=r.household_id; MODE="household"; HH=r.household_id;
+    save(); toast(r.ya_era?"Ya eras parte de esta cuenta":"¡Te uniste! 🎉"); openParejas(); render();
+  }catch(e){ toast("Te uniste, pero no pude cargar los datos. Recarga la app."); }
 }
 async function salirParejas(){
   if(!confirm(tr("¿Salir de la cuenta conjunta? Volverás a tus finanzas personales.")))return;
@@ -2483,7 +2606,7 @@ function renderAuth(msg){
       ${(authMode==="login"&&PEND_EMAIL)?`<p style="text-align:center;margin:8px 0 0;"><a onclick="reenviarConfirmacion()" style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;">¿No te llegó el correo de confirmación? Reenviar</a></p>`:""}
       <p style="text-align:center;font-size:13px;margin:14px 0 0;color:var(--muted)">
         ${authMode==="login"?"¿No tienes cuenta?":"¿Ya tienes cuenta?"}
-        <a onclick="toggleAuth()" style="color:var(--champagne);cursor:pointer;text-decoration:underline;">${authMode==="login"?"Crear una":"Entrar"}</a>
+        <button type="button" onclick="toggleAuth()" style="color:var(--champagne);cursor:pointer;text-decoration:underline;background:none;border:none;font:inherit;padding:0;">${authMode==="login"?"Crear una":"Entrar"}</button>
       </p>
       <p class="muted" style="text-align:center;font-size:11px;margin-top:18px;">Powered by Quantum Services</p>
     </div>`);

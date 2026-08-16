@@ -12,9 +12,14 @@ const P=process.argv[2]||path.join(__dirname,"..","index.html");
 const code=fs.readFileSync(P,"utf8").match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/)[1];
 
 const noop=()=>{};
+// El stub imita lo justo del DOM para que las vistas corran. querySelector
+// devuelve otro stub (no null) porque el codigo encadena: si devolviera null,
+// el test fallaria por el simulador y no por la app.
 const el=()=>({textContent:"",innerHTML:"",value:"",style:{},setAttribute:noop,
-  classList:{add:noop,remove:noop,contains:()=>false},querySelectorAll:()=>[],appendChild:noop,
-  onclick:null,remove:noop,focus:noop,children:[],dataset:{},getAttribute:()=>null});
+  classList:{add:noop,remove:noop,contains:()=>false},
+  querySelector:()=>el(),querySelectorAll:()=>[],appendChild:noop,
+  onclick:null,remove:noop,focus:noop,children:[],dataset:{},getAttribute:()=>null,
+  closest:()=>el(),id:"",offsetParent:null,disabled:false});
 const ctx={console,Math,Date,JSON,Intl,Number,String,Array,Object,parseFloat,parseInt,isNaN,
   encodeURIComponent,decodeURIComponent,setTimeout:noop,clearTimeout:noop,setInterval:noop,
   clearInterval:noop,fetch:()=>Promise.resolve({json:()=>({})}),addEventListener:noop,
