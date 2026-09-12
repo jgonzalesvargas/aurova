@@ -51,7 +51,7 @@ state.recurring=[
  {id:"r3",paid:[],type:"gasto",name:"Vivienda",amount:850,dueDay:1,categoryId:_id("Renta"),freq:"mensual"},
  {id:"r4",paid:[],type:"gasto",name:"Comida",amount:400,dueDay:1,categoryId:_id("Comida"),freq:"mensual"},
  {id:"r5",paid:[],type:"gasto",name:"Gasolina",amount:360,dueDay:1,categoryId:_id("Transporte"),freq:"mensual"}];
-state.budgets={[_id("Renta")]:1000};
+state.budgets={[SEL]:{[_id("Renta")]:1000}};
 state.transactions=[{id:"t1",type:"ingreso",amount:2081.14,categoryId:_id("Spark / Delivery"),date:SEL+"-14",note:"Spark (pago)"}];
 state.profile.name="Jesus";
 

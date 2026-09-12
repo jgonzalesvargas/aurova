@@ -488,6 +488,7 @@ const TR_EN = {
   "días sin anotar nada — es justo cuando más se escapa el dinero.":"days without logging anything — that's exactly when money slips away.",
   "Llevas":"It's been",
   "Anotar":"Log it",
+  "fijo por pagar":"fixed, still due",
   "Categoría puesta sola. Cámbiala si no es.":"Category filled in for you. Change it if it's wrong.",
   "Volver a Análisis":"Back to Analysis",
   "Estado de cuenta":"Statement",
@@ -1200,14 +1201,21 @@ function viewPresupuesto(){
   const incomes = state.recurring.filter(r=>r.type==="ingreso").sort((a,b)=>(a.dueDay||1)-(b.dueDay||1));
   const planIngreso = incomes.reduce((s,r)=>s+expectedMensual(r),0);
   const gc = gastoCats();
+  /* Dos cifras del mismo compromiso, y hacen falta las dos:
+       comp = TODO lo comprometido del mes → es el plan, no cambia al pagar
+       pend = lo que de eso todavía no sale → es lo que va contra el tope
+     Usar `comp` en la barra contaba la renta dos veces en cuanto se marcaba
+     pagada (el pago ya existe como movimiento), y la barra se ponía roja por
+     un sobregiro inventado. */
   const compCat = comprometidoPorCat();
+  const pendCat = comprometidoPendiente(SEL);
   const rows = gc.map(c=>{
     const limit = budgetDe(c.id, SEL);
     const spent = txnsOf(SEL).filter(t=>t.type==="gasto"&&t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
-    return {c,limit,spent,comp:compCat[c.id]||0};
+    return {c,limit,spent,comp:compCat[c.id]||0,pend:pendCat[c.id]||0};
   });
   const totSpent=rows.reduce((s,r)=>s+r.spent,0);
-  const totUsado=rows.reduce((s,r)=>s+r.comp+r.spent,0);
+  const totUsado=rows.reduce((s,r)=>s+r.pend+r.spent,0);
   // Lo comprometido cuenta CONTRA el límite de su categoría, no encima.
   // Si pones $1,000 de tope a Renta y ya tienes $850 de renta fija, tu plan de
   // vivienda es $1,000 — no $1,850. Sumarlos hacía que la app inventara gasto
@@ -1277,12 +1285,12 @@ function viewPresupuesto(){
       <div class="stat"><div class="k">Va consumido</div><div class="v ${totUsado>totPlan&&totPlan?'expense':'champ'} num">${money(totUsado)}</div></div>
     </div>
     <div class="card">
-      ${rows.map(({c,limit,spent,comp})=>{
-        // Lo fijo de la categoría ya consume parte del tope. Se muestra dentro
-        // de la barra para que se vea cuánto margen real queda.
-        const usado = comp + spent;
+      ${rows.map(({c,limit,spent,pend})=>{
+        // Lo fijo que todavía no sale ya consume parte del tope. Se muestra
+        // dentro de la barra para que se vea cuánto margen real queda.
+        const usado = pend + spent;
         const p = limit? Math.min(100,usado/limit*100):0;
-        const pComp = limit? Math.min(100,comp/limit*100):0;
+        const pComp = limit? Math.min(100,pend/limit*100):0;
         const over = limit && usado>limit;
         const libre = limit? limit-usado : 0;
         return `
@@ -1295,7 +1303,7 @@ function viewPresupuesto(){
             </span>
           </div>
           ${limit?`<div class="bar ${over?'over':''}" style="position:relative;"><span style="width:${p}%"></span>${comp?`<i style="position:absolute;left:0;top:0;bottom:0;width:${pComp}%;background:rgba(201,169,106,.35);border-radius:inherit;"></i>`:""}</div>`:""}
-          ${comp?`<div class="t2" style="margin-top:4px;">${money(comp)} ya es fijo${limit?` · te quedan ${money(Math.max(0,libre))} de margen`:""}</div>`:""}
+          ${pend?`<div class="t2" style="margin-top:4px;">${money(pend)} fijo por pagar${limit?` · te quedan ${money(Math.max(0,libre))} de margen`:""}</div>`:""}
         </div>`}).join("")}
     </div>
     <p class="muted" style="font-size:12px;margin-top:12px;">El tope es para TODA la categoría. La parte dorada es lo que ya es fijo — el resto es tu margen. La barra se pone roja si te pasas.</p>`;
