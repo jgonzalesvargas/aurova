@@ -488,6 +488,7 @@ const TR_EN = {
   "días sin anotar nada — es justo cuando más se escapa el dinero.":"days without logging anything — that's exactly when money slips away.",
   "Llevas":"It's been",
   "Anotar":"Log it",
+  "Categoría puesta sola. Cámbiala si no es.":"Category filled in for you. Change it if it's wrong.",
   "Volver a Análisis":"Back to Analysis",
   "Estado de cuenta":"Statement",
   "Todo lo que pasó en":"Everything that happened in",
@@ -614,7 +615,7 @@ function mapTipo(t,kind){
   return kind==="pasivo"?"Otra deuda":"Otro activo";
 }
 function normalizeState(s){
-  s.categories=s.categories||[]; s.transactions=s.transactions||[]; s.recurring=s.recurring||[];
+  s.categories=s.categories||[]; s.transactions=s.transactions||[]; s.recurring=s.recurring||[]; s.catMemory=s.catMemory||{};
   s.recurring.forEach(r=>{ if(!r.type) r.type="gasto"; if(!r.freq) r.freq="mensual"; if(r.variable==null) r.variable=false; });
   s.goals=s.goals||[]; s.budgets=s.budgets||{}; s.accounts=s.accounts||[]; s.nwHistory=s.nwHistory||[];
   // Los presupuestos pasan de ser globales a estar fechados por mes. Antes,
@@ -655,7 +656,7 @@ function normalizeState(s){
   return s;
 }
 // Claves de "finanzas" (lo que se comparte en cuenta conjunta; el perfil NO se comparte)
-const FINANCE_KEYS=["categories","transactions","recurring","goals","budgets","accounts","nwHistory"];
+const FINANCE_KEYS=["categories","transactions","recurring","goals","budgets","accounts","nwHistory","catMemory"];
 function financesOf(s){ const o={}; FINANCE_KEYS.forEach(k=>{ if(s[k]!==undefined) o[k]=s[k]; }); return o; }
 function load(){
   try{ const raw = localStorage.getItem(KEY); if(raw) return normalizeState(JSON.parse(raw)); }catch(e){}
@@ -797,7 +798,7 @@ function seed(){
     cat("Servicios","gasto","#B892C4"), cat("Entretenimiento","gasto","#87B9C4"), cat("Salud","gasto","#7FB77E"),
     cat("Deudas","gasto","#D98E80"), cat("Otros gastos","gasto","#8A8477")
   ];
-  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], nwHistory:[], profile:{name:"",goal:"",currency:"USD",payFreq:"",reminders:true,lang:"es",plan:"free",planSource:"",planExpires:null,referralCode:"",referredBy:"",discount:null,household:null,createdAt:todayISO()}, seeded:false };
+  return { categories:cats, transactions:[], recurring:[], goals:[], budgets:{}, accounts:[], nwHistory:[], catMemory:{}, profile:{name:"",goal:"",currency:"USD",payFreq:"",reminders:true,lang:"es",plan:"free",planSource:"",planExpires:null,referralCode:"",referredBy:"",discount:null,household:null,createdAt:todayISO()}, seeded:false };
 }
 
 /* ============ Helpers de datos ============ */
@@ -1599,15 +1600,17 @@ function openTxn(id){
       <button id="segInc" onclick="setTxnType('ingreso')">↑ Ingreso</button>
     </div>
     <div class="field"><label>Monto</label><input id="fMonto" type="number" inputmode="decimal" placeholder="0.00" step="0.01" value="${t?t.amount:""}" autofocus></div>
-    <div class="field"><label>Categoría</label><select id="fCat"></select></div>
+    <div class="field"><label>Categoría</label><select id="fCat"></select>
+      <div id="fCatHint" class="t2" style="margin-top:5px;color:var(--champagne);font-size:11.5px;"></div></div>
     <div class="field row2">
       <div><label>Fecha</label><input id="fFecha" type="date" value="${t?t.date:defDate()}"></div>
-      <div><label>Nota (opcional)</label><input id="fNota" type="text" placeholder="Ej. Almuerzo" value="${t?esc(t.note||""):""}"></div>
+      <div><label>Nota (opcional)</label><input id="fNota" type="text" placeholder="Ej. Starbucks" value="${t?esc(t.note||""):""}" oninput="sugerirCat()"></div>
     </div>
     <div class="sheet-actions">
       <button class="btn ghost" onclick="closeModal()">Cancelar</button>
       <button class="btn" onclick="saveTxn()">${t?"Guardar cambios":"Guardar"}</button>
     </div>`);
+  catTocada = !!t;   // editando, la categoría ya es una decisión tomada
   setTxnType(txnType, t?t.categoryId:null);
 }
 function setTxnType(t,preselect){ txnType=t;
@@ -1620,7 +1623,8 @@ function fillCats(preselect){
   const list = txnType==="gasto"?gastoCats():ingresoCats();
   sel.innerHTML = list.map(c=>`<option value="${c.id}" ${preselect===c.id?"selected":""}>${esc(c.name)}</option>`).join("")
     + `<option value="__new">+ Nueva categoría…</option>`;
-  sel.onchange=function(){ if(this.value==="__new") nuevaCatInline(); };
+  sel.onchange=function(){ if(this.value==="__new") nuevaCatInline(); else catTocada=true;
+    const h=document.getElementById("fCatHint"); if(h) h.innerHTML=""; };
 }
 function nuevaCatInline(){
   const name=prompt(tr("Nombre de la nueva categoría de "+(txnType==="gasto"?"gasto":"ingreso")+":"));
@@ -1634,6 +1638,7 @@ function saveTxn(){
   if(!amount||amount<=0){ toast("Escribe un monto válido"); return; }
   if(catId==="__new"){ toast("Elige o crea una categoría"); return; }
   const data={type:txnType,amount,categoryId:catId,date:document.getElementById("fFecha").value||defDate(),note:document.getElementById("fNota").value.trim()};
+  aprenderCat(data.note,data.type,catId);
   if(editTxnId){ Object.assign(state.transactions.find(x=>x.id===editTxnId),data); }
   else state.transactions.push({id:uid(),...data});
   save(); closeModal(); toast(editTxnId?"Movimiento actualizado":(txnType==="ingreso"?"Ingreso agregado":"Gasto agregado")); render();
@@ -2361,6 +2366,76 @@ function revisarPerfil(){
                  cta:"Crear meta", act:"go('metas')"});
   }
   return avisos;
+}
+
+/* ============ Adivinar la categoría ============
+   Elegir categoría a mano en cada gasto es el peaje que hace que la gente deje
+   de anotar. La tabla cubre los comercios que casi todos usan; lo que de verdad
+   sostiene esto es que APRENDE: si corriges la categoría de "Giant" una vez,
+   la próxima ya viene puesta. Lo aprendido pesa más que la tabla — el usuario
+   sabe de su vida más que una lista fija. */
+function normTxt(s){ return (s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,""); }
+/** La primera palabra útil de la nota. En la práctica es el comercio:
+    "Starbucks Reston" → "starbucks". Es corta y estable, que es justo lo que
+    se necesita para recordar sin guardar basura. */
+function claveNota(nota){
+  const w=normTxt(nota).split(/[^a-z0-9]+/).filter(x=>x.length>=3);
+  return w[0]||"";
+}
+const CAT_PALABRAS = {
+  "Comida":["uber eats","door dash","doordash","grubhub","instacart","starbucks","dunkin","mcdonald","wendy","chipotle","subway","chick fil","popeyes","taco bell","burger","pizza","domino","panera","restaurant","restaurante","cafeteria","coffee","giant","safeway","aldi","lidl","walmart","costco","target","kroger","harris teeter","trader joe","whole foods","grocery","supermercado","almuerzo","lunch","cena","dinner","desayuno","7-eleven","wawa food"],
+  "Transporte":["shell","exxon","chevron","sunoco","citgo","valero","gasolina","gasoline","fuel","uber","lyft","metro","parking","estacionamiento","toll","peaje","ezpass","autozone","o reilly","jiffy lube","mecanico","llanta","tire","car wash"],
+  "Servicios":["verizon","t-mobile","tmobile","at&t","comcast","xfinity","dominion","washington gas","pepco","novec","electric","internet","telefono","cellphone","insurance","seguro","geico","progressive","state farm","allstate","agua","water bill"],
+  "Entretenimiento":["netflix","spotify","hulu","disney","hbo","paramount","peacock","youtube","playstation","xbox","steam","nintendo","cinema","movie","amc","regal","concierto","concert","cerveza","brewery"],
+  "Salud":["cvs","walgreens","rite aid","pharmacy","farmacia","doctor","dentist","dentista","clinica","clinic","hospital","urgent care","gimnasio","planet fitness","gym","optom","medic"],
+  "Renta":["rent","renta","alquiler","mortgage","hipoteca","landlord","apartamento","apartment","hoa"],
+  "Deudas":["capital one","bank of america","wells fargo","chase","amex","american express","discover","prestamo","loan payment","credit card","tarjeta","pago de deuda","student loan"]
+};
+const CAT_PALABRAS_ING = {
+  "Salario":["payroll","salary","salario","sueldo","paycheck","nomina","direct deposit","wells fargo"],
+  "Spark / Delivery":["spark","doordash","door dash","uber","lyft","instacart","grubhub","amazon flex","delivery","propina","tips"]
+};
+/** Más larga primero: "uber eats" tiene que ganarle a "uber", o todo almuerzo
+    pedido por app termina contado como transporte. */
+function tablaPalabras(tipo){
+  const src = tipo==="ingreso" ? CAT_PALABRAS_ING : CAT_PALABRAS, out=[];
+  Object.keys(src).forEach(cat=>src[cat].forEach(p=>out.push([p,cat])));
+  return out.sort((a,b)=>b[0].length-a[0].length);
+}
+function adivinarPorTabla(nota,tipo){
+  const n=normTxt(nota); if(n.length<3) return null;
+  for(const [p,cat] of tablaPalabras(tipo)){
+    if(n.indexOf(p)>=0){
+      const c=state.categories.find(x=>x.kind===tipo && x.name===cat);
+      if(c) return c.id;
+    }
+  }
+  return null;
+}
+function adivinarCat(nota,tipo){
+  const k=claveNota(nota); if(!k) return null;
+  const mem=(state.catMemory||{})[k];
+  if(mem && state.categories.some(c=>c.id===mem && c.kind===tipo)) return mem;
+  return adivinarPorTabla(nota,tipo);
+}
+/** Solo se guarda la corrección: lo que la tabla ya acierta no hace falta
+    recordarlo, y así la memoria no crece con lo obvio. */
+function aprenderCat(nota,tipo,catId){
+  const k=claveNota(nota); if(!k || !catId) return;
+  state.catMemory=state.catMemory||{};
+  if(adivinarPorTabla(nota,tipo)===catId) delete state.catMemory[k];
+  else state.catMemory[k]=catId;
+}
+/* Si ya tocó el desplegable, la app no vuelve a moverlo: nada enoja más que
+   escribir la nota y que te cambien la categoría que acabas de elegir. */
+let catTocada=false;
+function sugerirCat(){
+  const nota=document.getElementById("fNota"), sel=document.getElementById("fCat"), hint=document.getElementById("fCatHint");
+  if(!nota||!sel) return;
+  if(catTocada){ if(hint) hint.innerHTML=""; return; }
+  const id=adivinarCat(nota.value,txnType);
+  if(id) sel.value=id;
+  if(hint) hint.innerHTML = id ? tr("Categoría puesta sola. Cámbiala si no es.") : "";
 }
 
 /* ============ VISTA: ESTADO DE CUENTA ============
