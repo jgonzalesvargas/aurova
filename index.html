@@ -488,6 +488,30 @@ const TR_EN = {
   "días sin anotar nada — es justo cuando más se escapa el dinero.":"days without logging anything — that's exactly when money slips away.",
   "Llevas":"It's been",
   "Anotar":"Log it",
+  "Volver a Análisis":"Back to Analysis",
+  "Estado de cuenta":"Statement",
+  "Todo lo que pasó en":"Everything that happened in",
+  "movimiento por movimiento.":"transaction by transaction.",
+  "Entró":"Money in",
+  "Salió":"Money out",
+  "sin cambio":"no change",
+  "Gastaste de más":"You overspent",
+  "Te quedó":"You kept",
+  "El mes pasado:":"Last month:",
+  "A dónde se fue":"Where it went",
+  "de todo lo que gastaste":"of everything you spent",
+  "Sin gastos en este mes.":"No expenses this month.",
+  "Sin gastos":"No expenses",
+  "Pagos fijos":"Fixed bills",
+  "Pagado · día":"Paid · day",
+  "Sin pagar · día":"Unpaid · day",
+  "Sin pagar":"Unpaid",
+  "Pagado":"Paid",
+  "No tienes pagos fijos registrados.":"You have no fixed bills set up.",
+  "Lo que guardaste":"What you saved",
+  "Movimiento por movimiento":"Transaction by transaction",
+  "No anotaste ningún movimiento este mes.":"You didn't log any transactions this month.",
+  "Solo aparece lo que está anotado. Un pago fijo entra en esta lista el día que lo marcas como pagado.":"Only what you logged shows up here. A fixed bill joins this list the day you mark it as paid.",
   "un préstamo de un bien pero no registraste el bien.":"a loan on an asset but never registered the asset itself.",
   "préstamos de un bien pero no registraste el bien.":"loans on assets but never registered the assets themselves.",
   "Una tarjeta no tiene":"One card has no",
@@ -910,7 +934,7 @@ function render(){
   const el = document.getElementById("app");
   el.innerHTML = "";
   const v = document.createElement("div"); v.className="view";
-  v.innerHTML = tr(({inicio:viewInicio, movimientos:viewMovimientos, pagos:viewPagos, metas:viewMetas, presupuesto:viewPresupuesto, analisis:viewAnalisis})[VIEW]());
+  v.innerHTML = tr(({inicio:viewInicio, movimientos:viewMovimientos, pagos:viewPagos, metas:viewMetas, presupuesto:viewPresupuesto, analisis:viewAnalisis, statement:viewStatement})[VIEW]());
   el.appendChild(v);
 }
 function mesLabel(m){ const [y,mo]=m.split("-"); const arr=LANG==="en"?MESES_EN:MESES; return arr[+mo-1]+" "+y; }
@@ -920,7 +944,7 @@ function go(v){ VIEW=v; window.scrollTo(0,0); render(); }
 const TABS=[["inicio","◈","Inicio"],["movimientos","≡","Movs."],["pagos","◷","Pagos"],["metas","✦","Metas"],["presupuesto","▦","Plan"],["analisis","▤","Análisis"]];
 function renderTabs(){
   document.getElementById("tabs").innerHTML = tr(TABS.map(([id,ic,lbl])=>
-    `<button class="tab ${VIEW===id?'active':''}" onclick="go('${id}')"><span class="ti">${ic}</span><span class="tl">${lbl}</span></button>`).join(""));
+    `<button class="tab ${(VIEW===id||(VIEW==="statement"&&id==="analisis"))?'active':''}" onclick="go('${id}')"><span class="ti">${ic}</span><span class="tl">${lbl}</span></button>`).join(""));
 }
 
 /* ============ VISTA: INICIO ============ */
@@ -1995,6 +2019,7 @@ function viewAnalisis(){
       <div style="display:flex;gap:6px;align-items:center;">
         <button class="btn sm ${RANGE===6?'':'ghost'}" onclick="setRange(6)">6M</button>
         <button class="btn sm ${RANGE===12?'':'ghost'}" onclick="setRange(12)">12M</button>
+        <button class="btn ghost sm" onclick="go('statement')">▤ Estado de cuenta</button>
         <button class="btn ghost sm" onclick="descargarReporte()" title="Reporte PDF">⬇ PDF${planActivo()?"":" ✦"}</button>
       </div>
     </div>
@@ -2336,6 +2361,134 @@ function revisarPerfil(){
                  cta:"Crear meta", act:"go('metas')"});
   }
   return avisos;
+}
+
+/* ============ VISTA: ESTADO DE CUENTA ============
+   El resumen de Inicio dice en qué quedó el mes; esto dice qué PASÓ. Es la
+   vista a la que se vuelve cuando alguien pregunta "¿y en qué se me fue?" y
+   necesita ver el movimiento exacto, no una barra de colores. Va gratis a
+   propósito: si el mes no se puede auditar, la app no sirve para decidir nada.
+   El PDF sigue siendo Premium — la información es de todos, el documento
+   con marca es el producto. */
+const DIAS_SEM    = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+const DIAS_SEM_EN = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+function mesAnterior(m){ return mesesAntesDe(m,1)[0]; }
+function diaLabel(iso){
+  const d=new Date(iso+"T00:00");
+  return (LANG==="en"?DIAS_SEM_EN:DIAS_SEM)[d.getDay()]+" "+d.getDate();
+}
+/** Variación contra el mes anterior. null cuando no hay con qué comparar: un
+    "+100%" contra un mes en cero no informa nada, solo asusta. */
+function deltaPct(hoy,antes){ return antes>0 ? (hoy/antes-1)*100 : null; }
+/** Sube el gasto = rojo. Sube el ingreso = verde. Por eso recibe `bueno`. */
+function flechaDelta(d,subirEsBueno){
+  if(d===null || Math.abs(d)<5) return `<span class="muted" style="font-size:11px;">sin cambio</span>`;
+  const sube=d>0, bien = subirEsBueno ? sube : !sube;
+  return `<span style="font-size:11px;color:${bien?'var(--income)':'var(--expense)'};">${sube?'▲':'▼'} ${Math.abs(Math.round(d))}%</span>`;
+}
+
+function statementDatos(m){
+  const ant=mesAnterior(m);
+  const porCat={}, porCatAnt={};
+  txnsOf(m).filter(t=>t.type==="gasto").forEach(t=>{ porCat[t.categoryId]=(porCat[t.categoryId]||0)+t.amount; });
+  txnsOf(ant).filter(t=>t.type==="gasto").forEach(t=>{ porCatAnt[t.categoryId]=(porCatAnt[t.categoryId]||0)+t.amount; });
+  const dias={};
+  txnsOf(m).forEach(t=>{ (dias[t.date]=dias[t.date]||[]).push(t); });
+  const pagos=pagosDelMes(m);
+  return {
+    ant,
+    ing:ingresosMes(m), gas:gastosMes(m),
+    ingAnt:ingresosMes(ant), gasAnt:gastosMes(ant),
+    cats:Object.entries(porCat).sort((a,b)=>b[1]-a[1]), porCatAnt,
+    dias:Object.keys(dias).sort().reverse().map(d=>({d,ts:dias[d]})),
+    hechos:pagos.filter(p=>p.paid), faltan:pagos.filter(p=>!p.paid),
+    aportes:state.goals.map(g=>({g,v:(g.contribs||[]).filter(c=>c.month===m).reduce((s,c)=>s+c.amount,0)})).filter(x=>x.v>0)
+  };
+}
+
+function viewStatement(){
+  const m=SEL, D=statementDatos(m), neto=D.ing-D.gas;
+  const barra = D.cats.length ? D.cats[0][1] : 1;
+
+  return `
+    <button class="linkbtn" style="margin-bottom:10px;" onclick="go('analisis')">‹ Volver a Análisis</button>
+    <div class="head-row"><h2 class="section-title" style="margin:0">Estado de cuenta</h2>
+      <button class="btn ghost sm" onclick="descargarReporte()">⬇ PDF${planActivo()?"":" ✦"}</button>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin:-4px 2px 12px;">Todo lo que pasó en ${mesLabel(m)}, movimiento por movimiento.</p>
+
+    <div class="grid2">
+      <div class="stat"><div class="k">Entró</div><div class="v income num">${money(D.ing)}</div>
+        <div style="margin-top:3px;">${flechaDelta(deltaPct(D.ing,D.ingAnt),true)}</div></div>
+      <div class="stat"><div class="k">Salió</div><div class="v expense num">${money(D.gas)}</div>
+        <div style="margin-top:3px;">${flechaDelta(deltaPct(D.gas,D.gasAnt),false)}</div></div>
+    </div>
+    <div class="hero ${neto<0?'neg':''}" style="text-align:left;padding:18px;margin-top:12px;">
+      <div class="lbl">${neto<0?"Gastaste de más":"Te quedó"}</div>
+      <div class="big num" style="font-size:clamp(28px,8vw,38px)">${money(Math.abs(neto))}</div>
+      <div class="sub">El mes pasado: ${money(D.ingAnt-D.gasAnt)}</div>
+    </div>
+
+    <h2 class="section-title">A dónde se fue</h2>
+    <div class="card">
+      ${D.cats.length ? D.cats.map(([id,v])=>{
+        const c=catById(id), pct=D.gas>0?v/D.gas*100:0;
+        return `<div class="row" style="display:block;padding:10px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+            <span class="t1" style="font-size:14px;">${esc(c.name)}</span>
+            <span style="display:flex;align-items:center;gap:8px;">
+              ${flechaDelta(deltaPct(v,D.porCatAnt[id]||0),false)}
+              <span class="num" style="font-size:14px;color:var(--cream);">${money(v)}</span>
+            </span>
+          </div>
+          <div class="bar" style="margin-top:6px;"><span style="width:${Math.round(v/barra*100)}%;background:${c.color};"></span></div>
+          <div class="t2" style="margin-top:3px;">${Math.round(pct)}% de todo lo que gastaste</div>
+        </div>`;
+      }).join("") : `<div class="empty"><div class="em-ic">▤</div>Sin gastos en este mes.</div>`}
+    </div>
+
+    <h2 class="section-title">Pagos fijos</h2>
+    <div class="card">
+      ${(D.hechos.length||D.faltan.length) ? D.hechos.map(p=>`
+        <div class="row"><div class="ic" style="color:var(--income)">✓</div>
+          <div class="body"><div class="t1">${esc(p.name)}</div><div class="t2">Pagado · día ${p.dueDay}</div></div>
+          <div class="amt num">${money(p.amount)}</div></div>`).join("")
+        + D.faltan.map(p=>`
+        <div class="row"><div class="ic" style="color:var(--warn)">○</div>
+          <div class="body"><div class="t1">${esc(p.name)}</div><div class="t2">Sin pagar · día ${p.dueDay}</div></div>
+          <div class="amt num">${money(p.amount)}</div></div>`).join("")
+      : `<div class="empty"><div class="em-ic">◷</div>No tienes pagos fijos registrados.</div>`}
+    </div>
+
+    ${D.aportes.length?`
+    <h2 class="section-title">Lo que guardaste</h2>
+    <div class="card">
+      ${D.aportes.map(({g,v})=>`<div class="row"><div class="ic" style="color:var(--champagne)">✦</div>
+        <div class="body"><div class="t1">${esc(g.name)}</div><div class="t2">${money(g.saved)} / ${money(g.target)}</div></div>
+        <div class="amt num champ">${money(v)}</div></div>`).join("")}
+    </div>`:""}
+
+    <h2 class="section-title">Movimiento por movimiento</h2>
+    <div class="card">
+      ${D.dias.length ? D.dias.map(({d,ts})=>{
+        const totDia=ts.reduce((s,t)=>s+(t.type==="gasto"?-t.amount:t.amount),0);
+        return `<div style="padding:10px 0;border-bottom:1px solid var(--rule);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+            <span style="font-size:11.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--champagne);">${diaLabel(d)}</span>
+            <span class="num" style="font-size:12px;color:${totDia<0?'var(--expense)':'var(--income)'};">${totDia<0?"-":"+"}${money2(Math.abs(totDia))}</span>
+          </div>
+          ${ts.map(t=>{const c=catById(t.categoryId);return `
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:3px 0;font-size:13px;">
+              <span style="color:var(--cream-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                <span style="color:${c.color};">•</span> ${esc(t.note||c.name)}
+              </span>
+              <span class="num" style="flex:none;color:${t.type==="gasto"?'var(--expense)':'var(--income)'};">${t.type==="gasto"?"-":"+"}${money2(t.amount)}</span>
+            </div>`;}).join("")}
+        </div>`;
+      }).join("") : `<div class="empty"><div class="em-ic">≡</div>No anotaste ningún movimiento este mes.</div>`}
+    </div>
+    <p class="muted" style="font-size:12px;margin-top:12px;">Solo aparece lo que está anotado. Un pago fijo entra en esta lista el día que lo marcas como pagado.</p>
+  `;
 }
 
 /* ============ Asesor financiero ============
@@ -2866,10 +3019,18 @@ function openUpsell(feat){
 function descargarReporte(){
   if(!planActivo()){ openUpsell("Los reportes en PDF"); return; }
   const w=window.open("","_blank"); if(!w){ toast("Permite ventanas emergentes"); return; }
-  const m=SEL, ing=ingresosMes(m), gas=gastosMes(m), neto=ing-gas;
-  const porCat={}; txnsOf(m).filter(t=>t.type==="gasto").forEach(t=>{porCat[t.categoryId]=(porCat[t.categoryId]||0)+t.amount;});
-  const cats=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
+  // Los mismos datos que la vista Estado de cuenta: si el PDF los recalculara
+  // aparte, tarde o temprano el papel y la pantalla dirían cosas distintas.
+  const m=SEL, D=statementDatos(m), ing=D.ing, gas=D.gas, neto=ing-gas;
+  const cats=D.cats;
   const goalsHtml = state.goals.map(g=>`<tr><td>${esc(g.name)}</td><td class="r">${money(g.saved)} / ${money(g.target)}</td></tr>`).join("");
+  const pctTxt = (v,a)=>{ const d=deltaPct(v,a); return d===null?"—":(d>0?"+":"")+Math.round(d)+"%"; };
+  const pagosHtml = D.hechos.concat(D.faltan).map(p=>
+    `<tr><td>${esc(p.name)}</td><td class="c">${p.paid?"Pagado":"Sin pagar"}</td><td class="r">${money(p.amount)}</td></tr>`).join("");
+  const diasHtml = D.dias.map(({d,ts})=>
+    `<tr class="day"><td colspan="3">${diaLabel(d)}</td></tr>` +
+    ts.map(t=>{const c=catById(t.categoryId);return `<tr><td>${esc(t.note||c.name)}</td><td class="c">${esc(c.name)}</td><td class="r">${t.type==="gasto"?"-":"+"}${money2(t.amount)}</td></tr>`;}).join("")
+  ).join("");
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>Aurova — Reporte</title><style>
     body{font-family:Georgia,"Times New Roman",serif;color:#14171C;max-width:700px;margin:26px auto;padding:0 22px;}
     .h{display:flex;align-items:center;gap:10px;border-bottom:2px solid #C9A96A;padding-bottom:10px;}
@@ -2878,21 +3039,26 @@ function descargarReporte(){
     .big{display:flex;gap:14px;margin:18px 0;} .c{flex:1;border:1px solid #e6e1d6;border-radius:10px;padding:12px;text-align:center;}
     .c .k{font-size:10.5px;color:#999;text-transform:uppercase;letter-spacing:.06em;} .c .v{font-size:21px;margin-top:4px;}
     h2{font-size:14px;border-bottom:1px solid #C9A96A;padding-bottom:4px;margin:22px 0 6px;}
-    table{width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;} td{padding:7px 2px;border-bottom:1px solid #eee;} .r{text-align:right;}
+    table{width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;} td{padding:7px 2px;border-bottom:1px solid #eee;} .r{text-align:right;} .c{text-align:center;color:#888;font-size:12px;}
+    tr.day td{background:#faf7f0;color:#B08D3C;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:bold;padding:6px 4px;}
+    tr:nth-child(1) td{border-top:none;}
     .foot{margin-top:26px;color:#b3b3b3;font-size:11px;text-align:center;}
     @media print{.noprint{display:none;}}
   </style></head><body>
-    <div class="h"><div class="q">$</div><div><h1>Aurova</h1><div class="sub">Reporte de ${mesLabel(m)}${state.profile&&state.profile.name?" · "+esc(state.profile.name):""}</div></div></div>
+    <div class="h"><div class="q">$</div><div><h1>Aurova</h1><div class="sub">Estado de cuenta · ${mesLabel(m)}${state.profile&&state.profile.name?" · "+esc(state.profile.name):""}</div></div></div>
     <div class="big">
       <div class="c"><div class="k">Ingresos</div><div class="v" style="color:#3a8a3a">${money(ing)}</div></div>
       <div class="c"><div class="k">Gastos</div><div class="v" style="color:#b5524a">${money(gas)}</div></div>
       <div class="c"><div class="k">Neto</div><div class="v">${money(neto)}</div></div>
     </div>
-    <h2>Gastos por categoría</h2>
-    <table>${cats.length?cats.map(([id,v])=>`<tr><td>${esc(catById(id).name)}</td><td class="r">${money(v)}</td></tr>`).join(""):'<tr><td>Sin gastos</td></tr>'}</table>
+    <h2>A dónde se fue</h2>
+    <table>${cats.length?cats.map(([id,v])=>`<tr><td>${esc(catById(id).name)}</td><td class="c">${Math.round(gas>0?v/gas*100:0)}% · ${pctTxt(v,D.porCatAnt[id]||0)} vs ${mesLabel(D.ant)}</td><td class="r">${money(v)}</td></tr>`).join(""):'<tr><td>Sin gastos</td></tr>'}</table>
+    ${pagosHtml?`<h2>Pagos fijos</h2><table>${pagosHtml}</table>`:""}
     <h2>Patrimonio neto</h2>
     <table><tr><td>Activos</td><td class="r">${money(totActivos())}</td></tr><tr><td>Deudas</td><td class="r">${money(totPasivos())}</td></tr><tr><td><b>Patrimonio</b></td><td class="r"><b>${money(patrimonio())}</b></td></tr></table>
     ${state.goals.length?`<h2>Metas</h2><table>${goalsHtml}</table>`:""}
+    <h2>Movimiento por movimiento</h2>
+    <table>${diasHtml||'<tr><td>No anotaste ningún movimiento este mes.</td></tr>'}</table>
     <div class="foot">Generado por Aurova · Powered by Quantum Services</div>
     <div class="noprint" style="text-align:center;margin-top:20px;"><button onclick="window.print()" style="background:#C9A96A;border:none;border-radius:8px;padding:10px 20px;font-size:14px;cursor:pointer;">Guardar como PDF / Imprimir</button></div>
   </body></html>`;

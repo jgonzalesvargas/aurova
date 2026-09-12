@@ -56,7 +56,7 @@ state.transactions=[{id:"t1",type:"ingreso",amount:2081.14,categoryId:_id("Spark
 state.profile.name="Jesus";
 
 const _res=[];
-for(const v of ["viewInicio","viewMovimientos","viewPagos","viewMetas","viewPresupuesto","viewAnalisis"]){
+for(const v of ["viewInicio","viewMovimientos","viewPagos","viewMetas","viewPresupuesto","viewAnalisis","viewStatement"]){
   try{ const o=eval(v)(); if(typeof o!=="string"||!o.length) throw new Error("devolvió vacío");
        _res.push(["ok",v,o.length]); }catch(e){ _res.push(["fail",v,e.message]); }
 }
