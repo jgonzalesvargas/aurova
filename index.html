@@ -480,7 +480,14 @@ const TR_EN = {
   "Deuda total:":"Total debt:",
   "Ponle todo lo que te sobre a la":"Put everything you can spare on the",
   "primera de la lista":"first one on the list",
-  "y a las demás solo su pago mínimo. Cada vez que liquidas una, su pago se suma a la siguiente — por eso la última cae mucho más rápido que la primera.":"and only the minimum on the rest. Each time you clear one, its payment rolls into the next — that's why the last one falls much faster than the first."
+  "y a las demás solo su pago mínimo. Cada vez que liquidas una, su pago se suma a la siguiente — por eso la última cae mucho más rápido que la primera.":"and only the minimum on the rest. Each time you clear one, its payment rolls into the next — that's why the last one falls much faster than the first.",
+  "Puedes gastar":"You can spend",
+  "Vas pasado por":"You're over by",
+  "al día ·":"a day ·",
+  "días restantes":"days left",
+  "días sin anotar nada — es justo cuando más se escapa el dinero.":"days without logging anything — that's exactly when money slips away.",
+  "Llevas":"It's been",
+  "Anotar":"Log it",
 };
 const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
 function tr(html){
@@ -772,6 +779,53 @@ function ingresoEsperado(m){
 
 function meQueda(m){ return ingresoEsperado(m) - gastosMes(m) - pagosPendientes(m) - aportesMetasMes(m); }
 
+/* ============ Cuánto puedes gastar HOY ============
+   "Te quedan $420 este mes" no frena a nadie el día 18: la cifra suena a mucho
+   hasta que caes en cuenta de que faltan 12 días. Partirla entre los días que
+   restan es la misma verdad, dicha de la forma que sí para la mano.
+   Solo aplica al mes en curso: en un mes pasado o futuro "por día" no significa
+   nada, y por eso devuelve null en vez de un número inventado. */
+function diasRestantesMes(m){
+  if(m!==curMonth()) return 0;
+  const d=new Date(), ultimo=new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  return Math.max(1, ultimo-d.getDate()+1);   // hoy cuenta: todavía puedes gastar
+}
+function porDia(m){
+  const dias=diasRestantesMes(m);
+  if(!dias) return null;
+  return {dias, monto: meQueda(m)/dias};
+}
+function heroPorDia(){
+  const pd=porDia(SEL); if(!pd) return "";
+  const neg=pd.monto<0;
+  return `<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--rule);font-size:13px;color:${neg?'var(--expense)':'var(--champagne)'};">
+    ${neg?"Vas pasado por":"Puedes gastar"} <b class="num" style="font-family:var(--serif);font-size:16px;">${money2(Math.abs(pd.monto))}</b> al día · <b class="num">${pd.dias}</b> días restantes
+  </div>`;
+}
+
+/* ============ Aviso de "no has anotado nada" ============
+   El error que mata una app de finanzas no es un cálculo malo: es que la
+   persona deje de anotar tres días y ya nunca vuelva. Solo se miran fechas de
+   hoy o antes — un gasto fechado en el futuro no prueba que alguien siga
+   registrando. */
+function diasSinRegistrar(){
+  const hoy=todayISO();
+  const f=state.transactions.map(t=>t.date).filter(d=>d&&d<=hoy).sort();
+  if(!f.length) return null;
+  return Math.round((Date.parse(hoy+"T00:00") - Date.parse(f[f.length-1]+"T00:00"))/86400000);
+}
+function avisoRegistro(){
+  if(!(state.profile&&state.profile.reminders)) return "";
+  if(SEL!==curMonth()) return "";
+  const d=diasSinRegistrar();
+  if(d===null || d<3) return "";   // cuenta nueva: de eso se encarga el onboarding
+  return `<div style="background:rgba(201,169,106,.1);border:1px solid var(--champagne-line);border-radius:12px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+    <span style="font-size:16px;">✍️</span>
+    <span style="flex:1;font-size:13px;color:var(--champagne);line-height:1.45;">Llevas <b>${d}</b> días sin anotar nada — es justo cuando más se escapa el dinero.</span>
+    <button class="btn ghost sm" onclick="openTxn()">Anotar</button>
+  </div>`;
+}
+
 /* ============ Render principal ============ */
 function render(){
   document.getElementById("monthLabel").textContent = mesLabel(SEL);
@@ -809,6 +863,7 @@ function viewInicio(){
 
   return `
     ${recordatorioInicio()}
+    ${avisoRegistro()}
     ${revisionInicio()}
     ${MODE==="household"?`<div style="display:inline-block;background:rgba(201,169,106,.12);border:1px solid var(--champagne-line);border-radius:999px;padding:3px 12px;font-size:11px;color:var(--champagne);margin-bottom:10px;">👫 Cuenta conjunta</div>`:""}
     ${state.profile&&state.profile.name?`<div style="font-family:var(--serif);color:var(--cream);font-size:18px;margin:0 0 4px;">Hola, ${esc(state.profile.name)} 👋</div>`:""}
@@ -818,6 +873,7 @@ function viewInicio(){
       <div class="lbl">Me queda para gastar</div>
       <div class="big num">${money(q)}</div>
       <div class="sub">${mesLabel(SEL)} · después de gastos, metas y pagos pendientes</div>
+      ${heroPorDia()}
     </div>
     <div class="grid2">
       <div class="stat"><div class="k">Ingresos ${ingEsp>ing?"(esperado)":""}</div><div class="v income num">${money(ingEsp)}</div></div>
