@@ -488,6 +488,79 @@ const TR_EN = {
   "días sin anotar nada — es justo cuando más se escapa el dinero.":"days without logging anything — that's exactly when money slips away.",
   "Llevas":"It's been",
   "Anotar":"Log it",
+  "un préstamo de un bien pero no registraste el bien.":"a loan on an asset but never registered the asset itself.",
+  "préstamos de un bien pero no registraste el bien.":"loans on assets but never registered the assets themselves.",
+  "Una tarjeta no tiene":"One card has no",
+  "tarjetas no tienen":"cards have no",
+  "Te quedan":"You've got",
+  "Tu asesor":"Your advisor",
+  "Ver los":"See all",
+  "Estos avisos salen de tus propios números comparados con los estándares que usa la industria: 30% del ingreso en vivienda, 30% de uso del cupo de crédito, 3 meses de gastos guardados. Son una guía, no una ley — tu situación manda.":"These come from your own numbers measured against the standards the industry uses: 30% of income on housing, 30% of your credit limit, 3 months of expenses saved. They're a guide, not a law — your situation wins.",
+  "Este mes sale":"This month",
+  "más de lo que entra. Si se repite, esa diferencia termina en una tarjeta.":"more goes out than comes in. If it keeps happening, that gap ends up on a credit card.",
+  "se lleva el":"eats up",
+  "de lo que ganas. Lo sano es":"of what you earn. Healthy is",
+  "— son":"— that's",
+  "de más al mes.":"extra per month.",
+  "Te pasaste del tope en":"You blew past the cap in",
+  "categorías,":"categories,",
+  "en total. La peor es":"in total. The worst is",
+  "Te pasaste":"You went",
+  "del tope de":"over your cap on",
+  "Vas a ritmo de pasarte en":"You're on pace to overspend on",
+  ": al cierre serían":": by month end that's",
+  "contra un tope de":"against a cap of",
+  "subió":"is up",
+  "contra tu promedio de los meses anteriores.":"versus your average of the past months.",
+  "deudas con interés arriba del":"debts with interest above",
+  ". Juntas te cuestan":". Together they cost you",
+  "al año en puro interés. Empieza por":"a year in pure interest. Start with",
+  "al año en puro interés. Mátala primero.":"a year in pure interest. Kill that one first.",
+  ", que está al":", which sits at",
+  "está al":"is at",
+  ": te cuesta":": it costs you",
+  "Estás usando el":"You're using",
+  "del cupo de":"of your limit on",
+  ". Pasar del":". Going over",
+  "es lo que más te baja el puntaje de crédito.":"is what hurts your credit score most.",
+  "tarjetas pasan del":"cards are over",
+  "de su cupo, y eso es lo que más te baja el puntaje. La peor es":"of their limit, and that's what hurts your score most. The worst is",
+  "— usa el":"— it's using",
+  "Con lo que estás pagando,":"At what you're paying today,",
+  "no se liquida nunca: el pago no cubre ni el interés.":"never gets paid off: the payment doesn't even cover the interest.",
+  "de tus deudas no se liquidan nunca con el pago de hoy: no cubre ni el interés.":"of your debts never get paid off at today's payment: it doesn't even cover the interest.",
+  "A este ritmo":"At this pace",
+  "años en llegar a cero. Subirle poco al pago te ahorra miles.":"years to reach zero. Raising the payment a little saves you thousands.",
+  "tarda":"takes",
+  "deudas tardan más de":"debts take more than",
+  "años al ritmo de hoy. La más lenta es":"years at today's pace. The slowest is",
+  "años.":"years.",
+  "de efectivo de sobra mientras pagas intereses altos. Ese dinero rinde mucho más pagando deuda que parado en la cuenta.":"in spare cash while you're paying high interest. That money does far more paying down debt than sitting in an account.",
+  "Debes el":"You owe",
+  "de todo lo que tienes. Arriba del":"of everything you own. Above",
+  "cualquier imprevisto te obliga a endeudarte más.":"any surprise forces you deeper into debt.",
+  "Tu efectivo no cubre ni":"Your cash doesn't cover even",
+  "mes de gastos. Sin colchón, el primer imprevisto se paga con tarjeta.":"month of expenses. With no cushion, the first surprise goes on a credit card.",
+  "Tu efectivo cubre":"Your cash covers",
+  "meses de gastos. Lo recomendado son":"months of expenses. The recommendation is",
+  ": te faltan":": you're short",
+  "Estás guardando el":"You're saving",
+  "de lo que ganas. Llegar al":"of what you earn. Getting to",
+  "serían":"would be",
+  "más al mes.":"more per month.",
+  "metas llevan meses sin un solo aporte. Una meta parada es una meta que ya no va a pasar.":"goals have gone months without a single contribution. A stalled goal is a goal that won't happen.",
+  "lleva meses sin un solo aporte. Una meta parada es una meta que ya no va a pasar.":"has gone months without a single contribution. A stalled goal is a goal that won't happen.",
+  "compras de menos de":"purchases under",
+  "suman":"add up to",
+  "este mes. El goteo no se siente, pero se nota a fin de mes.":"this month. The drip never hurts, but it shows at month end.",
+  "pagos vencidos por":"overdue bills worth",
+  ". Los recargos son el dinero más caro que existe.":". Late fees are the most expensive money there is.",
+  "Nada que corregir este mes. Lo que entra, lo que sale y tus deudas van en orden — sigue así.":"Nothing to fix this month. What comes in, what goes out and your debts are all in order — keep it up.",
+  "Tienes":"You have",
+  "Ver plan":"See plan",
+  "Ver deudas":"See debts",
+  "Revisar":"Review",
+  "Retomar":"Pick it back up",
 };
 const TR_ORDER = Object.entries(TR_EN).sort((a,b)=>b[0].length-a[0].length);
 function tr(html){
@@ -864,7 +937,7 @@ function viewInicio(){
   return `
     ${recordatorioInicio()}
     ${avisoRegistro()}
-    ${revisionInicio()}
+    ${asesorInicio()}
     ${MODE==="household"?`<div style="display:inline-block;background:rgba(201,169,106,.12);border:1px solid var(--champagne-line);border-radius:999px;padding:3px 12px;font-size:11px;color:var(--champagne);margin-bottom:10px;">👫 Cuenta conjunta</div>`:""}
     ${state.profile&&state.profile.name?`<div style="font-family:var(--serif);color:var(--cream);font-size:18px;margin:0 0 4px;">Hola, ${esc(state.profile.name)} 👋</div>`:""}
     ${state.profile&&state.profile.goal&&goalTip(state.profile.goal)?`<div class="muted" style="font-size:12.5px;margin:0 0 12px;">💡 ${goalTip(state.profile.goal)}</div>`:""}
@@ -1917,6 +1990,7 @@ function leg(color,txt){ return `<span style="display:inline-flex;align-items:ce
 function viewAnalisis(){
   const meses=mesesBack(RANGE), nw=patrimonio();
   return `
+    ${asesorFull()}
     <div class="head-row"><h2 class="section-title" style="margin:0">Análisis</h2>
       <div style="display:flex;gap:6px;align-items:center;">
         <button class="btn sm ${RANGE===6?'':'ghost'}" onclick="setRange(6)">6M</button>
@@ -2264,17 +2338,251 @@ function revisarPerfil(){
   return avisos;
 }
 
-function revisionInicio(){
-  const a=revisarPerfil();
-  if(!a.length) return "";
-  return `<div class="card" style="margin-bottom:14px;border-color:var(--champagne-line);">
-    <div style="font-size:11.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--champagne);margin-bottom:8px;">Para que los números te cuadren</div>
-    ${a.map(x=>`<div class="row" style="padding:8px 0;">
-      <div class="ic">${x.ic}</div>
-      <div class="body"><div class="t2" style="font-size:13px;line-height:1.5;">${x.txt}</div></div>
-      <button class="btn ghost sm" onclick="${x.act}">${x.cta}</button>
-    </div>`).join("")}
+/* ============ Asesor financiero ============
+   El chat con IA solo habla cuando le preguntan, cuesta dinero por respuesta y
+   está detrás de Premium. Pero casi todo consejo que de verdad mueve la aguja
+   no necesita un modelo: es aritmética contra estándares conocidos —30% de
+   vivienda, 30% de uso de crédito, 3 meses de fondo de emergencia. Eso corre
+   en el teléfono, gratis, al instante, y lo ve todo el mundo.
+   nivel: 3 peligro · 2 atención · 1 falta un dato · 0 vas bien
+*/
+const ASESOR_TOPES = {"Renta":30,"Vivienda":30,"Comida":15,"Transporte":15,"Entretenimiento":10};
+
+function mesesAntesDe(m,n){
+  const arr=[], d=new Date(m+"-01T00:00");
+  for(let i=n;i>=1;i--){ const x=new Date(d); x.setMonth(x.getMonth()-i); arr.push(x.toISOString().slice(0,7)); }
+  return arr;
+}
+/** Promedio de gasto de los meses anteriores con movimientos. Ignora los meses
+    vacíos: un mes sin registrar no significa "gastó cero", y meterlo hunde el
+    promedio y hace que todo parezca un aumento gigante. */
+function gastoPromedio(m,n){
+  const v=mesesAntesDe(m,n).map(x=>gastosMes(x)).filter(x=>x>0);
+  return v.length ? v.reduce((a,b)=>a+b,0)/v.length : 0;
+}
+function efectivoLiquido(){
+  return state.accounts
+    .filter(a=>a.kind==="activo" && (a.type==="Efectivo"||a.type==="Ahorros"))
+    .reduce((s,a)=>s+(+a.value||0),0);
+}
+/** Meses hasta liquidar una deuda pagando siempre lo mismo. Infinity cuando el
+    pago no cubre ni el interés — el caso que de verdad hay que gritar. */
+function mesesParaPagar(saldo,tasaAnual,pago){
+  const i=(+tasaAnual||0)/1200;
+  if(!(pago>0)) return Infinity;
+  if(i<=0) return Math.ceil(saldo/pago);
+  if(pago<=saldo*i) return Infinity;
+  return Math.ceil(-Math.log(1-saldo*i/pago)/Math.log(1+i));
+}
+/** Compromiso que AÚN no se paga. Lo ya pagado vive como transacción; volver a
+    sumarlo desde los recurrentes contaría la renta dos veces y el asesor
+    avisaría de sobregiros que no existen. */
+function comprometidoPendiente(m){
+  const out={};
+  state.recurring
+    .filter(r=>(r.type||"gasto")==="gasto" && !((r.paid||[]).includes(m)))
+    .forEach(r=>{ const k=r.categoryId||"_otros"; out[k]=(out[k]||0)+expectedMensual(r); });
+  const kd=catDeudasId();
+  deudasPagables()
+    .filter(a=>!((a.paid||[]).includes(m)))
+    .forEach(a=>{ out[kd]=(out[kd]||0)+(+a.payment||0); });
+  return out;
+}
+/** Lo que va consumido por categoría: gastado + comprometido pendiente. */
+function usadoPorCat(m){
+  const out=comprometidoPendiente(m);
+  txnsOf(m).filter(t=>t.type==="gasto").forEach(t=>{ const k=t.categoryId||"_otros"; out[k]=(out[k]||0)+t.amount; });
+  return out;
+}
+
+function asesor(){
+  const m=SEL, out=[];
+  const add=(nivel,ic,txt,cta,act)=>out.push({nivel,ic,txt,cta,act});
+  const ing=ingresoEsperado(m), gas=gastosMes(m), pend=pagosPendientes(m), salidas=gas+pend;
+  const usado=usadoPorCat(m);
+  const esteMes = (m===curMonth());
+  const hoy = new Date();
+  const diaHoy = esteMes ? hoy.getDate() : 0;
+  const diasMes = new Date(hoy.getFullYear(), hoy.getMonth()+1, 0).getDate();
+
+  /* ---------- Gasto ---------- */
+  if(ing>0 && salidas>ing)
+    add(3,"🚨",`Este mes sale <b>${money(salidas-ing)}</b> más de lo que entra. Si se repite, esa diferencia termina en una tarjeta.`,"Ver plan","go('presupuesto')");
+
+  if(ing>0){
+    const desbal=[];
+    Object.keys(ASESOR_TOPES).forEach(nombre=>{
+      const c=state.categories.find(x=>x.kind==="gasto" && x.name===nombre); if(!c) return;
+      const total=usado[c.id]||0; if(total<=0) return;
+      const pct=total/ing*100, tope=ASESOR_TOPES[nombre];
+      if(pct>tope+3) desbal.push({nombre,pct,tope,exceso:total-ing*tope/100});
+    });
+    // Solo las dos peores: la tercera ya no cambia ninguna decisión.
+    desbal.sort((x,y)=>y.exceso-x.exceso).slice(0,2).forEach(d=>
+      add(2,"⚖️",`<b>${esc(d.nombre)}</b> se lleva el <b>${Math.round(d.pct)}%</b> de lo que ganas. Lo sano es <b>${d.tope}%</b> — son <b>${money(d.exceso)}</b> de más al mes.`,"Ver plan","go('presupuesto')"));
+  }
+
+  /* Un aviso por categoría convertía cinco topes reventados en cinco tarjetas
+     iguales que nadie lee. Se agrupa y se nombra la peor. */
+  const pasados=[], aRitmo=[];
+  gastoCats().forEach(c=>{
+    const lim=budgetDe(c.id,m); if(!(lim>0)) return;
+    const u=usado[c.id]||0;
+    if(u>lim) pasados.push({c,ex:u-lim});
+    else if(esteMes && diaHoy>=7){
+      const proy=u/diaHoy*diasMes;
+      if(proy>lim*1.1) aRitmo.push({c,proy,lim});
+    }
+  });
+  if(pasados.length){
+    pasados.sort((x,y)=>y.ex-x.ex);
+    add(3,"🔴", pasados.length===1
+      ? `Te pasaste <b>${money(pasados[0].ex)}</b> del tope de <b>${esc(pasados[0].c.name)}</b>.`
+      : `Te pasaste del tope en <b>${pasados.length}</b> categorías, <b>${money(pasados.reduce((s,x)=>s+x.ex,0))}</b> en total. La peor es <b>${esc(pasados[0].c.name)}</b>.`,
+      "Ajustar","go('presupuesto')");
+  }
+  if(aRitmo.length){
+    aRitmo.sort((x,y)=>(y.proy-y.lim)-(x.proy-x.lim));
+    add(2,"📈",`Vas a ritmo de pasarte en <b>${esc(aRitmo[0].c.name)}</b>: al cierre serían <b>${money(aRitmo[0].proy)}</b> contra un tope de <b>${money(aRitmo[0].lim)}</b>.`,"Ajustar","go('presupuesto')");
+  }
+
+  const prev=mesesAntesDe(m,3).filter(x=>state.transactions.some(t=>inMonth(t.date,x)));
+  if(prev.length>=2){
+    const subidas=[];
+    gastoCats().forEach(c=>{
+      const ahora=txnsOf(m).filter(t=>t.type==="gasto"&&t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
+      if(ahora<60) return;
+      const vals=prev.map(x=>txnsOf(x).filter(t=>t.type==="gasto"&&t.categoryId===c.id).reduce((s,t)=>s+t.amount,0));
+      const prom=vals.reduce((a,b)=>a+b,0)/vals.length;
+      if(prom>20 && ahora>prom*1.4) subidas.push({c,pct:(ahora/prom-1)*100,sube:ahora-prom});
+    });
+    if(subidas.length){
+      subidas.sort((x,y)=>y.sube-x.sube);
+      add(2,"📊",`<b>${esc(subidas[0].c.name)}</b> subió <b>${Math.round(subidas[0].pct)}%</b> contra tu promedio de los meses anteriores.`,"Revisar","go('movimientos')");
+    }
+  }
+
+  /* ---------- Deuda ---------- */
+  const deudas=state.accounts.filter(a=>a.kind==="pasivo" && (+a.value||0)>0);
+
+  /* Quien tiene cinco tarjetas caras no necesita cinco avisos idénticos: los
+     cuenta, suma lo que cuestan juntas y nombra por cuál empezar. */
+  const caras=deudas.filter(a=>(+a.rate||0)>=20).sort((x,y)=>(+y.rate)-(+x.rate));
+  if(caras.length){
+    const anual=caras.reduce((s,a)=>s+(+a.value)*(+a.rate)/100,0);
+    add(3,"💸", caras.length===1
+      ? `<b>${esc(caras[0].name)}</b> está al <b>${+caras[0].rate}%</b>: te cuesta <b>${money(anual)}</b> al año en puro interés. Mátala primero.`
+      : `Tienes <b>${caras.length}</b> deudas con interés arriba del <b>20%</b>. Juntas te cuestan <b>${money(anual)}</b> al año en puro interés. Empieza por <b>${esc(caras[0].name)}</b>, que está al <b>${+caras[0].rate}%</b>.`,
+      "Plan de deudas","go('pagos')");
+  }
+
+  const cupo=deudas.filter(a=>a.type==="Tarjeta de crédito" && (+a.limit||0)>0)
+    .map(a=>({a,uso:(+a.value)/(+a.limit)*100})).filter(x=>x.uso>30).sort((x,y)=>y.uso-x.uso);
+  if(cupo.length){
+    add(cupo[0].uso>50?3:2,"💳", cupo.length===1
+      ? `Estás usando el <b>${Math.round(cupo[0].uso)}%</b> del cupo de <b>${esc(cupo[0].a.name)}</b>. Pasar del <b>30%</b> es lo que más te baja el puntaje de crédito.`
+      : `<b>${cupo.length}</b> tarjetas pasan del <b>30%</b> de su cupo, y eso es lo que más te baja el puntaje. La peor es <b>${esc(cupo[0].a.name)}</b> — usa el <b>${Math.round(cupo[0].uso)}%</b>.`,
+      "Ver deudas","go('analisis')");
+  }
+
+  const nunca=[], lentas=[];
+  deudas.filter(a=>(+a.payment||0)>0).forEach(a=>{
+    const n=mesesParaPagar(+a.value,+a.rate,+a.payment);
+    if(n===Infinity) nunca.push(a); else if(n>60) lentas.push({a,n});
+  });
+  if(nunca.length)
+    add(3,"⛔", nunca.length===1
+      ? `Con lo que estás pagando, <b>${esc(nunca[0].name)}</b> no se liquida nunca: el pago no cubre ni el interés.`
+      : `<b>${nunca.length}</b> de tus deudas no se liquidan nunca con el pago de hoy: no cubre ni el interés.`,
+      "Ver deudas","go('pagos')");
+  if(lentas.length){
+    lentas.sort((x,y)=>y.n-x.n);
+    add(2,"⏳", lentas.length===1
+      ? `A este ritmo <b>${esc(lentas[0].a.name)}</b> tarda <b>${Math.round(lentas[0].n/12)}</b> años en llegar a cero. Subirle poco al pago te ahorra miles.`
+      : `<b>${lentas.length}</b> deudas tardan más de <b>5</b> años al ritmo de hoy. La más lenta es <b>${esc(lentas[0].a.name)}</b>: <b>${Math.round(lentas[0].n/12)}</b> años.`,
+      "Plan de deudas","go('pagos')");
+  }
+
+  const liq=efectivoLiquido();
+  const gm=gastoPromedio(m,3)||gas;
+  const caro=deudas.filter(a=>(+a.rate||0)>=15).reduce((s,a)=>s+(+a.value||0),0);
+  if(caro>0 && gm>0 && liq>gm*3+500)
+    add(2,"🏦",`Tienes <b>${money(liq-gm*3)}</b> de efectivo de sobra mientras pagas intereses altos. Ese dinero rinde mucho más pagando deuda que parado en la cuenta.`,"Ver deudas","go('analisis')");
+
+  if(totActivos()>0 && ratioDeuda()>80)
+    add(2,"⚠️",`Debes el <b>${Math.round(ratioDeuda())}%</b> de todo lo que tienes. Arriba del <b>80%</b> cualquier imprevisto te obliga a endeudarte más.`,"Ver deudas","go('analisis')");
+
+  /* ---------- Ahorro ---------- */
+  if(gm>0){
+    const meses=liq/gm;
+    if(meses<1)
+      add(3,"🛟",`Tu efectivo no cubre ni <b>1</b> mes de gastos. Sin colchón, el primer imprevisto se paga con tarjeta.`,"Crear meta","go('metas')");
+    else if(meses<3)
+      add(2,"🛟",`Tu efectivo cubre <b>${meses.toFixed(1)}</b> meses de gastos. Lo recomendado son <b>3</b>: te faltan <b>${money(gm*3-liq)}</b>.`,"Crear meta","go('metas')");
+  }
+
+  if(ing>0){
+    const ahorro=aportesMetasMes(m)+Math.max(0,ing-salidas);
+    const tasa=ahorro/ing*100;
+    if(tasa<10)
+      add(2,"🌱",`Estás guardando el <b>${Math.round(tasa)}%</b> de lo que ganas. Llegar al <b>10%</b> serían <b>${money(ing*0.1-ahorro)}</b> más al mes.`,"Ver plan","go('presupuesto')");
+  }
+
+  const dosAtras=mesesAntesDe(m,2);
+  const paradas=state.goals.filter(g=>{
+    if((g.saved||0)>=(g.target||0)) return false;
+    const c=g.contribs||[]; if(!c.length) return false;
+    return !c.some(x=>x.month===m||dosAtras.includes(x.month));
+  });
+  if(paradas.length)
+    add(1,"🎯", paradas.length===1
+      ? `<b>${esc(paradas[0].name)}</b> lleva meses sin un solo aporte. Una meta parada es una meta que ya no va a pasar.`
+      : `<b>${paradas.length}</b> metas llevan meses sin un solo aporte. Una meta parada es una meta que ya no va a pasar.`,
+      "Retomar","go('metas')");
+
+  /* ---------- Hábitos ---------- */
+  const chicos=txnsOf(m).filter(t=>t.type==="gasto" && t.amount<15);
+  if(chicos.length>=10)
+    add(1,"💧",`<b>${chicos.length}</b> compras de menos de <b>${money2(15)}</b> suman <b>${money(chicos.reduce((s,t)=>s+t.amount,0))}</b> este mes. El goteo no se siente, pero se nota a fin de mes.`,"Revisar","go('movimientos')");
+
+  if(esteMes){
+    const venc=pagosDelMes(m).filter(p=>!p.paid && p.dueDay<diaHoy);
+    if(venc.length>=2)
+      add(3,"⏰",`Tienes <b>${venc.length}</b> pagos vencidos por <b>${money(venc.reduce((s,p)=>s+p.amount,0))}</b>. Los recargos son el dinero más caro que existe.`,"Pagar","go('pagos')");
+  }
+
+  /* Los datos que faltan también son consejo: sin ellos los números mienten. */
+  revisarPerfil().forEach(a=>add(1,a.ic,a.txt,a.cta,a.act));
+
+  out.sort((a,b)=>b.nivel-a.nivel);
+  if(!out.length)
+    add(0,"✅","Nada que corregir este mes. Lo que entra, lo que sale y tus deudas van en orden — sigue así.","","");
+  return out;
+}
+
+function asesorColor(n){ return n>=3?"var(--expense)":n===2?"var(--warn)":n===0?"var(--income)":"var(--champagne)"; }
+function asesorFila(x){
+  return `<div class="row" style="padding:10px 0;align-items:flex-start;">
+    <div class="ic" style="color:${asesorColor(x.nivel)};flex:none;">${x.ic}</div>
+    <div class="body"><div class="t2" style="font-size:13px;line-height:1.55;color:var(--cream-dim);">${x.txt}</div></div>
+    ${x.cta?`<button class="btn ghost sm" style="flex:none;" onclick="${x.act}">${x.cta}</button>`:""}
   </div>`;
+}
+function asesorInicio(){
+  const a=asesor(); if(!a.length) return "";
+  return `<div class="card" style="margin-bottom:14px;border-color:var(--champagne-line);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <div style="font-size:11.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--champagne);">Tu asesor</div>
+      ${a.length>3?`<button class="linkbtn" onclick="go('analisis')">Ver los ${a.length}</button>`:""}
+    </div>
+    ${a.slice(0,3).map(asesorFila).join("")}
+  </div>`;
+}
+function asesorFull(){
+  const a=asesor();
+  return `<h2 class="section-title">Tu asesor</h2>
+    <div class="card">${a.map(asesorFila).join("")}</div>
+    <p class="muted" style="font-size:12px;margin-top:10px;">Estos avisos salen de tus propios números comparados con los estándares que usa la industria: 30% del ingreso en vivienda, 30% de uso del cupo de crédito, 3 meses de gastos guardados. Son una guía, no una ley — tu situación manda.</p>`;
 }
 
 /* ============ Perfil ============ */

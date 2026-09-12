@@ -60,7 +60,7 @@ for(const v of ["viewInicio","viewMovimientos","viewPagos","viewMetas","viewPres
   try{ const o=eval(v)(); if(typeof o!=="string"||!o.length) throw new Error("devolvió vacío");
        _res.push(["ok",v,o.length]); }catch(e){ _res.push(["fail",v,e.message]); }
 }
-for(const f of ["pintarPlanDeudas","revisarPerfil","revisionInicio"]){
+for(const f of ["pintarPlanDeudas","revisarPerfil","asesor","asesorInicio","asesorFull"]){
   try{ eval(f)(); _res.push(["ok",f,""]); }catch(e){ _res.push(["fail",f,e.message]); }
 }
 _res;
