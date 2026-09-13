@@ -488,6 +488,12 @@ const TR_EN = {
   "días sin anotar nada — es justo cuando más se escapa el dinero.":"days without logging anything — that's exactly when money slips away.",
   "Llevas":"It's been",
   "Anotar":"Log it",
+  "Vence el día":"Due on day",
+  "venció hace":"overdue by",
+  "vence hoy":"due today",
+  "vence en":"due in",
+  "días":"days",
+  "día":"day",
   "Todavía no hay nada que analizar. Registra un ingreso y un gasto, y aquí te digo qué estás haciendo bien y qué no.":"Nothing to analyze yet. Log some income and an expense, and I'll tell you what you're doing right and what you're not.",
   "fijo por pagar":"fixed, still due",
   "Categoría puesta sola. Cámbiala si no es.":"Category filled in for you. Change it if it's wrong.",
@@ -2328,8 +2334,8 @@ function recordatorioInicio(){
   const dias = p.dueDay-hoy;
   const rojo = !!vencido;
   const txt = rojo
-    ? `venció hace ${hoy-p.dueDay}${(hoy-p.dueDay)===1?' día':' días'}`
-    : (dias===0?'vence hoy':('vence en '+dias+(dias===1?' día':' días')));
+    ? `venció hace <b>${hoy-p.dueDay}</b> ${(hoy-p.dueDay)===1?'día':'días'}`
+    : (dias===0?'vence hoy':`vence en <b>${dias}</b> ${dias===1?'día':'días'}`);
   const col = rojo ? "var(--expense)" : "var(--warn)";
   const bg  = rojo ? "rgba(217,142,128,.12)" : "rgba(216,166,87,.12)";
   const bd  = rojo ? "rgba(217,142,128,.45)" : "rgba(216,166,87,.4)";
