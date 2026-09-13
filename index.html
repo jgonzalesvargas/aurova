@@ -488,6 +488,7 @@ const TR_EN = {
   "días sin anotar nada — es justo cuando más se escapa el dinero.":"days without logging anything — that's exactly when money slips away.",
   "Llevas":"It's been",
   "Anotar":"Log it",
+  "Todavía no hay nada que analizar. Registra un ingreso y un gasto, y aquí te digo qué estás haciendo bien y qué no.":"Nothing to analyze yet. Log some income and an expense, and I'll tell you what you're doing right and what you're not.",
   "fijo por pagar":"fixed, still due",
   "Categoría puesta sola. Cámbiala si no es.":"Category filled in for you. Change it if it's wrong.",
   "Volver a Análisis":"Back to Analysis",
@@ -896,6 +897,8 @@ function porDia(m){
 }
 function heroPorDia(){
   const pd=porDia(SEL); if(!pd) return "";
+  // Sin un solo número cargado la cifra sale en $0.00, que no informa: desanima.
+  if(ingresoEsperado(SEL)<=0 && gastosMes(SEL)<=0) return "";
   const neg=pd.monto<0;
   return `<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--rule);font-size:13px;color:${neg?'var(--expense)':'var(--champagne)'};">
     ${neg?"Vas pasado por":"Puedes gastar"} <b class="num" style="font-family:var(--serif);font-size:16px;">${money2(Math.abs(pd.monto))}</b> al día · <b class="num">${pd.dias}</b> días restantes
@@ -2631,8 +2634,18 @@ function usadoPorCat(m){
   return out;
 }
 
+/** Una cuenta recién creada no tiene nada que analizar. Decirle "nada que
+    corregir, tus deudas van en orden" a quien no ha escrito un solo número es
+    mentirle — y es lo primero que ve al entrar. Mejor callarse y dejar que la
+    tarjeta de bienvenida haga su trabajo. */
+function sinDatos(){
+  return !state.transactions.length && !state.recurring.length
+      && !state.accounts.length && !state.goals.length;
+}
+
 function asesor(){
   const m=SEL, out=[];
+  if(sinDatos()) return out;
   const add=(nivel,ic,txt,cta,act)=>out.push({nivel,ic,txt,cta,act});
   const ing=ingresoEsperado(m), gas=gastosMes(m), pend=pagosPendientes(m), salidas=gas+pend;
   const usado=usadoPorCat(m);
@@ -2816,6 +2829,8 @@ function asesorInicio(){
 }
 function asesorFull(){
   const a=asesor();
+  if(!a.length) return `<h2 class="section-title">Tu asesor</h2>
+    <div class="card"><div class="empty"><div class="em-ic">✦</div>Todavía no hay nada que analizar. Registra un ingreso y un gasto, y aquí te digo qué estás haciendo bien y qué no.</div></div>`;
   return `<h2 class="section-title">Tu asesor</h2>
     <div class="card">${a.map(asesorFila).join("")}</div>
     <p class="muted" style="font-size:12px;margin-top:10px;">Estos avisos salen de tus propios números comparados con los estándares que usa la industria: 30% del ingreso en vivienda, 30% de uso del cupo de crédito, 3 meses de gastos guardados. Son una guía, no una ley — tu situación manda.</p>`;
